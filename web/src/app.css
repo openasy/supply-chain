@@ -1,0 +1,32 @@
+/* The few layouts this product needs that @openasy/ui's prebuilt styles do not include. Colours stay in the library's tokens. */
+
+.supply-wrap {
+  overflow-wrap: anywhere;
+}
+
+.supply-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One entry per line, for lists whose entries may hold commas, such as regular expressions. */
+.supply-textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  box-sizing: border-box;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--oa-line-strong);
+  border-radius: var(--radius-md);
+  background: var(--oa-surface);
+  color: var(--oa-fg);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  resize: vertical;
+}
+
+.supply-textarea:focus-visible {
+  outline: 2px solid var(--oa-accent);
+  outline-offset: 1px;
+}

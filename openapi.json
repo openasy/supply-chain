@@ -1,0 +1,1967 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "OpenAsy Supply Chain API",
+    "version": "0.1.0",
+    "summary": "What CI knows about every image, and a policy that says which may run.",
+    "description": "Every screen of supply-chain uses this API, and so can your scripts, CI and admission webhook (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nCI sends what it knows about an image (SBOM, the result of its own signature check, a provenance summary) with `SUPPLY_CHAIN_INGEST_TOKEN`. **This product records what CI says; it does not verify signatures itself** (ADR 0043). Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This supply-chain"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Images",
+      "description": "Evidence about images, and whether each may run."
+    },
+    {
+      "name": "Packages",
+      "description": "Which images contain a package."
+    },
+    {
+      "name": "Policy",
+      "description": "The rules every image must meet."
+    },
+    {
+      "name": "Exceptions",
+      "description": "A rule waived for an image, with a reason and an end."
+    },
+    {
+      "name": "Product",
+      "description": "Version and overview of this supply-chain."
+    }
+  ],
+  "paths": {
+    "/api/v1/images": {
+      "post": {
+        "operationId": "sendEvidence",
+        "tags": [
+          "Images"
+        ],
+        "summary": "Send evidence about an image",
+        "security": [
+          {
+            "ingestToken": []
+          },
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Stores what CI knows about an image: an SBOM, the result of its own `cosign verify` and a provenance summary. Any of them; what is not sent stays as it was, and a new SBOM replaces the old one. **This product records what CI says. It does not verify signatures or provenance itself** (ADR 0043), so the token that can send evidence is trusted like the pipeline that holds it.\n\n```bash\ndigest=$(crane digest ghcr.io/acme/app:1.4.2)\nsyft ghcr.io/acme/app@$digest -o cyclonedx-json > sbom.json\ncosign verify ghcr.io/acme/app@$digest --certificate-identity-regexp '^https://github.com/acme/' --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null && verified=true || verified=false\njq -n --slurpfile sbom sbom.json --argjson verified $verified '{sbom: $sbom[0], signature: {verified: $verified}}' |\n  curl -sf -X POST -H \"Authorization: Bearer $SUPPLY_CHAIN_INGEST_TOKEN\" -H 'content-type: application/json' --data-binary @- \\\n  \"https://supply-chain.example.com/api/v1/images?name=ghcr.io/acme/app&digest=$digest\"\n```\n\nThe body may be gzipped (`Content-Encoding: gzip`), up to 128 MiB unpacked.\n\nTakes SUPPLY_CHAIN_INGEST_TOKEN, or an API token with the editor role.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "The image without tag or digest, such as `ghcr.io/acme/app`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "digest",
+            "in": "query",
+            "required": true,
+            "description": "The image digest.",
+            "schema": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Evidence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored; the image already existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Image"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Stored; a new image.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Image"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      },
+      "get": {
+        "operationId": "listImages",
+        "tags": [
+          "Images"
+        ],
+        "summary": "List images",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "description": "Only images the policy allows or denies right now.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "allowed",
+                "denied"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Matches the name or digest.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Most recently updated first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/images/check": {
+      "get": {
+        "operationId": "checkImage",
+        "tags": [
+          "Images"
+        ],
+        "summary": "Ask whether an image may run",
+        "security": [
+          {
+            "ingestToken": []
+          },
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "For a Kubernetes admission webhook or a pipeline gate. The answer follows the policy of the moment and the exceptions that have not ended.\n\nTakes SUPPLY_CHAIN_INGEST_TOKEN, or any API token or session (viewer role).",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "The image without tag or digest, such as `ghcr.io/acme/app`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "digest",
+            "in": "query",
+            "required": true,
+            "description": "The image digest.",
+            "schema": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer. `allowed` is false for an image nobody reported on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Check"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/images/{id}": {
+      "get": {
+        "operationId": "getImage",
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get an image",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The image's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The image with its reasons and licences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "delete": {
+        "operationId": "deleteImage",
+        "tags": [
+          "Images"
+        ],
+        "summary": "Delete an image",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the admin role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The image's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted with its SBOM and packages."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/images/{id}/packages": {
+      "get": {
+        "operationId": "listImagePackages",
+        "tags": [
+          "Images"
+        ],
+        "summary": "List an image's packages",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The image's id.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Matches the package name.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "By name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/images/{id}/sbom": {
+      "get": {
+        "operationId": "downloadSbom",
+        "tags": [
+          "Images"
+        ],
+        "summary": "Download the SBOM",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The image's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The SBOM as it was sent. The format is in `x-sbom-format`.",
+            "headers": {
+              "x-sbom-format": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/packages": {
+      "get": {
+        "operationId": "findPackage",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Which images contain a package",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Searches every stored SBOM, for example when a library is found to be vulnerable.\n\nNeeds the viewer role.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "The package name, exactly.",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "Only this version, exactly.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One row per image and version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/policy": {
+      "get": {
+        "operationId": "getPolicy",
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Get the policy",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "The rules every image must meet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Policy"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "put": {
+        "operationId": "setPolicy",
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Replace the policy",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Takes the whole policy; fields it does not know are refused, so a typo cannot loosen a rule. It applies to every image at once.\n\nNeeds the admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Policy"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The policy now in force.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Policy"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/exceptions": {
+      "get": {
+        "operationId": "listExceptions",
+        "tags": [
+          "Exceptions"
+        ],
+        "summary": "List exceptions",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Soonest end first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "post": {
+        "operationId": "createException",
+        "tags": [
+          "Exceptions"
+        ],
+        "summary": "Waive a rule for an image",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Waives one rule, or all, for an image name or one digest, until it ends. It shows up in the answer as waived.\n\nNeeds the editor role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewException"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exception"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/exceptions/{id}": {
+      "delete": {
+        "operationId": "deleteException",
+        "tags": [
+          "Exceptions"
+        ],
+        "summary": "Remove an exception",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the editor role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The exception's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/summary": {
+      "get": {
+        "operationId": "getSummary",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Overview",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Counts for the whole install.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "operationId": "getVersion",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The running version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "listProducts",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Other products of this install",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "From OPENASY_PRODUCTS, for the product switcher.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "liveness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Readiness",
+        "description": "Ready while the database answers.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready to serve.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Metrics in the Prometheus text format.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-openasy-session",
+        "description": "The browser session after signing in (`openasy-session` when supply-chain runs on plain http://localhost). Requests that change something must come from the supply-chain origin."
+      },
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token created under Settings \u2192 API tokens (`oa_supply-chain_...`): one role, always an expiry (ADR 0003)."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Only when supply-chain is started by its tests or a local script: one shared token with the admin role. A production install does not have it."
+      },
+      "ingestToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`SUPPLY_CHAIN_INGEST_TOKEN`: for CI and the admission webhook. It can send evidence and ask whether an image may run, nothing else."
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "An error, as RFC 9457 Problem Details.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid-token",
+              "invalid-json",
+              "invalid-body",
+              "invalid-sbom",
+              "not-found",
+              "not-configured",
+              "payload-too-large",
+              "internal-error",
+              "unauthenticated",
+              "invalid-credentials",
+              "mfa-required",
+              "mfa-setup-required",
+              "forbidden",
+              "cross-site",
+              "rate-limited"
+            ],
+            "description": "Stable; match on this."
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "required": [
+          "product",
+          "version"
+        ],
+        "properties": {
+          "product": {
+            "const": "supply-chain"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductLink": {
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The product, as OpenAsy names it.",
+            "examples": [
+              "infrastructure"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The address people open it at.",
+            "examples": [
+              "https://infra.example.com"
+            ]
+          }
+        }
+      },
+      "ProductList": {
+        "type": "object",
+        "required": [
+          "products"
+        ],
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductLink"
+            }
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Reason": {
+        "type": "object",
+        "required": [
+          "rule",
+          "message",
+          "waived"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "type": "string",
+            "enum": [
+              "signature",
+              "sbom",
+              "provenance",
+              "licences",
+              "unknown-image"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "waived": {
+            "type": "boolean",
+            "description": "True when an active exception covers it."
+          }
+        }
+      },
+      "Image": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "digest",
+          "allowed",
+          "reasons",
+          "sbom",
+          "signature",
+          "provenance",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "allowed": {
+            "type": "boolean",
+            "description": "True when nothing is left that the policy has against it, after exceptions."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            }
+          },
+          "sbom": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "format",
+                  "at",
+                  "packages"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "cyclonedx-json",
+                      "spdx-json"
+                    ]
+                  },
+                  "at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "packages": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          },
+          "signature": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "verified",
+                  "identity",
+                  "issuer",
+                  "at"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "verified": {
+                    "type": "boolean"
+                  },
+                  "identity": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "issuer": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            ],
+            "description": "What CI reported about its own signature check. Not verified again here."
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "builder",
+                  "sourceRepo",
+                  "sourceCommit",
+                  "level",
+                  "at"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "builder": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sourceRepo": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sourceCommit": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "level": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            ],
+            "description": "What CI reported. Not verified again here."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ImageList": {
+        "type": "object",
+        "required": [
+          "images"
+        ],
+        "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Image"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "ImageDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Image"
+          },
+          {
+            "type": "object",
+            "required": [
+              "licences"
+            ],
+            "properties": {
+              "licences": {
+                "type": "array",
+                "description": "Every licence expression in the SBOM with how many packages carry it, judged by the policy.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "licence",
+                    "packages",
+                    "verdict"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "licence": {
+                      "type": "string"
+                    },
+                    "packages": {
+                      "type": "integer"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "allowed",
+                        "denied",
+                        "unknown"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "sbom": {
+            "type": "object",
+            "description": "A CycloneDX or SPDX JSON SBOM, as Syft or Trivy write it."
+          },
+          "signature": {
+            "type": "object",
+            "required": [
+              "verified"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "verified": {
+                "type": "boolean"
+              },
+              "identity": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              }
+            },
+            "description": "The result of `cosign verify`, run by CI."
+          },
+          "provenance": {
+            "type": "object",
+            "required": [
+              "level"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "builder": {
+                "type": "string"
+              },
+              "sourceRepo": {
+                "type": "string"
+              },
+              "sourceCommit": {
+                "type": "string"
+              },
+              "level": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4
+              }
+            },
+            "description": "A summary of the SLSA provenance CI checked."
+          }
+        }
+      },
+      "Check": {
+        "type": "object",
+        "required": [
+          "allowed",
+          "image",
+          "reasons"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            }
+          }
+        },
+        "description": "An image nobody reported on is denied, with the reason unknown-image."
+      },
+      "Package": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "purl",
+          "licence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "purl": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "licence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        }
+      },
+      "PackageList": {
+        "type": "object",
+        "required": [
+          "packages"
+        ],
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Package"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "required": [
+          "image",
+          "package",
+          "version",
+          "purl",
+          "licence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "image": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "digest"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          },
+          "package": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "purl": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "licence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        }
+      },
+      "UsageList": {
+        "type": "object",
+        "required": [
+          "usages"
+        ],
+        "properties": {
+          "usages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Usage"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "Policy": {
+        "type": "object",
+        "required": [
+          "requireSignature",
+          "allowedIdentities",
+          "allowedIssuers",
+          "requireSbom",
+          "requireProvenance",
+          "minProvenanceLevel",
+          "licenceAllow",
+          "licenceDeny"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "requireSignature": {
+            "type": "boolean"
+          },
+          "allowedIdentities": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            },
+            "description": "Regular expressions; the signer's identity must match one. Empty: any identity."
+          },
+          "allowedIssuers": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact issuers. Empty: any issuer."
+          },
+          "requireSbom": {
+            "type": "boolean"
+          },
+          "requireProvenance": {
+            "type": "boolean"
+          },
+          "minProvenanceLevel": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4
+          },
+          "licenceAllow": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            },
+            "description": "SPDX ids. Empty: any licence that is not denied. With a list, a package whose licence nobody named is denied."
+          },
+          "licenceDeny": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            },
+            "description": "SPDX ids. An OR expression passes when one alternative does; an AND needs every part."
+          }
+        }
+      },
+      "Exception": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "digest",
+          "rule",
+          "reason",
+          "by",
+          "createdAt",
+          "expiresAt",
+          "active"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "digest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            ]
+          },
+          "rule": {
+            "type": "string",
+            "enum": [
+              "signature",
+              "sbom",
+              "provenance",
+              "licences",
+              "all"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ExceptionList": {
+        "type": "object",
+        "required": [
+          "exceptions"
+        ],
+        "properties": {
+          "exceptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Exception"
+            }
+          }
+        }
+      },
+      "NewException": {
+        "type": "object",
+        "required": [
+          "name",
+          "rule",
+          "reason",
+          "expiresAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The image without tag or digest."
+          },
+          "digest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            ],
+            "description": "Only this build. Without it, every digest of the name."
+          },
+          "rule": {
+            "type": "string",
+            "enum": [
+              "signature",
+              "sbom",
+              "provenance",
+              "licences",
+              "all"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 500
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "At most 366 days away."
+          }
+        }
+      },
+      "Summary": {
+        "type": "object",
+        "required": [
+          "images",
+          "allowed",
+          "denied",
+          "allowedByException",
+          "withoutSbom",
+          "activeExceptions",
+          "packages"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "images": {
+            "type": "integer"
+          },
+          "allowed": {
+            "type": "integer"
+          },
+          "denied": {
+            "type": "integer"
+          },
+          "allowedByException": {
+            "type": "integer"
+          },
+          "withoutSbom": {
+            "type": "integer"
+          },
+          "activeExceptions": {
+            "type": "integer"
+          },
+          "packages": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

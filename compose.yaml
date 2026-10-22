@@ -1,0 +1,36 @@
+# Supply Chain. CI reports what it knows about each image; the policy says which may run, and a webhook or pipeline asks
+# (ADR 0043).
+#
+#   openssl rand -hex 32 > openasy-kek   # supply-chain's key: sign-in secrets (ADR 0021). Keep it with your backups
+#   docker compose up -d
+#   docker compose logs supply-chain | grep 'no owner yet'   # the one-time link that creates the owner account
+services:
+  supply-chain:
+    image: ghcr.io/openasy/supply-chain:0.1.0
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:8080:8080"   # UI and API; put a TLS proxy in front to reach it from elsewhere
+    volumes:
+      - supply-chain-data:/data   # SQLite database: images, SBOMs, the policy and exceptions
+    secrets:
+      - openasy-kek   # mounted at /run/secrets/openasy-kek
+    environment:
+      # The address people open Supply Chain at; with a TLS proxy in front, its https:// URL.
+      SUPPLY_CHAIN_PUBLIC_URL: ${SUPPLY_CHAIN_PUBLIC_URL:-http://localhost:8080}
+      # For CI and the admission webhook: it can send evidence and ask whether an image may run, and nothing else.
+      SUPPLY_CHAIN_INGEST_TOKEN: ${SUPPLY_CHAIN_INGEST_TOKEN:-}
+      # Sign in with your identity provider (OIDC), see the README:
+      # SUPPLY_CHAIN_OIDC_ISSUER: https://login.example.com
+      # SUPPLY_CHAIN_OIDC_CLIENT_ID: supply-chain
+      # SUPPLY_CHAIN_OIDC_CLIENT_SECRET: ${SUPPLY_CHAIN_OIDC_CLIENT_SECRET}
+
+volumes:
+  supply-chain-data:
+
+secrets:
+  openasy-kek:
+    file: ./openasy-kek
