@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "OpenAsy Supply Chain API",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "summary": "What CI knows about every image, and a policy that says which may run.",
     "description": "Every screen of supply-chain uses this API, and so can your scripts, CI and admission webhook (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nCI sends what it knows about an image (SBOM, the result of its own signature check, a provenance summary) with `SUPPLY_CHAIN_INGEST_TOKEN`. **This product records what CI says; it does not verify signatures itself** (ADR 0043). Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
     "license": {
