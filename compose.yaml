@@ -24,9 +24,9 @@ services:
       # For CI and the admission webhook: it can send evidence and ask whether an image may run, and nothing else.
       SUPPLY_CHAIN_INGEST_TOKEN: ${SUPPLY_CHAIN_INGEST_TOKEN:-}
       # Sign in with your identity provider (OIDC), see the README:
-      # SUPPLY_CHAIN_OIDC_ISSUER: https://login.example.com
-      # SUPPLY_CHAIN_OIDC_CLIENT_ID: supply-chain
-      # SUPPLY_CHAIN_OIDC_CLIENT_SECRET: ${SUPPLY_CHAIN_OIDC_CLIENT_SECRET}
+      # OPENASY_OIDC_ISSUER: https://login.example.com
+      # OPENASY_OIDC_CLIENT_ID: supply-chain
+      # OPENASY_OIDC_CLIENT_SECRET: ${OPENASY_OIDC_CLIENT_SECRET}
 
 volumes:
   supply-chain-data:

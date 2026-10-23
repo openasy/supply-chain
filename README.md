@@ -79,7 +79,7 @@ curl -sf -H "Authorization: Bearer $SUPPLY_CHAIN_INGEST_TOKEN" \
 | `SUPPLY_CHAIN_DB` | `/data/supply-chain.db` | SQLite file (WAL), on the `/data` volume |
 | `SUPPLY_CHAIN_METRICS_PORT` | | Serve `/metrics` on this port only (ADR 0026) |
 | `SUPPLY_CHAIN_HEADLESS` | `false` | `true` serves only the API |
-| `SUPPLY_CHAIN_PASSWORD_SIGN_IN`, `SUPPLY_CHAIN_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)). Owners can also add identity providers under Settings, Sign-in |
+| `SUPPLY_CHAIN_PASSWORD_SIGN_IN`, `OPENASY_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)). Owners can also add identity providers under Settings, Sign-in |
 
 The container runs as non-root with a read-only root filesystem, no capabilities and `no-new-privileges`.
 
