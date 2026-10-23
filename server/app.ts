@@ -70,7 +70,8 @@ function send(res: ServerResponse, status: number, body: string | Buffer, type =
   res.end(body);
 }
 
-const json = (res: ServerResponse, status: number, data: unknown, headers?: Record<string, string>) => send(res, status, JSON.stringify(data), "application/json", headers);
+const json = (res: ServerResponse, status: number, data: unknown, headers?: Record<string, string>) =>
+  send(res, status, JSON.stringify(data), "application/json", headers);
 
 const TITLES: Record<ProblemCode, string> = {
   "invalid-token": "Invalid token",
@@ -123,7 +124,8 @@ async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
 
 async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
   const raw = await readBody(req, limit).catch((err: unknown) => {
-    if (err instanceof SupplyError && err.code === "payload-too-large") throw new SupplyError(400, "invalid-json", `The body must be JSON, at most ${Math.round(limit / 1024)} KiB.`);
+    if (err instanceof SupplyError && err.code === "payload-too-large")
+      throw new SupplyError(400, "invalid-json", `The body must be JSON, at most ${Math.round(limit / 1024)} KiB.`);
     throw err;
   });
   try {
@@ -169,7 +171,8 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
   };
   const cursor = (url: URL) => url.searchParams.get("cursor") ?? undefined;
   const limit = (url: URL) => parseLimit(url.searchParams.get("limit"));
-  const page = <K extends string, T>(key: K, p: { items: T[]; nextCursor?: string }) => ({ [key]: p.items, ...(p.nextCursor && { nextCursor: p.nextCursor }) }) as Record<K, T[]> & { nextCursor?: string };
+  const page = <K extends string, T>(key: K, p: { items: T[]; nextCursor?: string }) =>
+    ({ [key]: p.items, ...(p.nextCursor && { nextCursor: p.nextCursor }) }) as Record<K, T[]> & { nextCursor?: string };
   const q = (url: URL) => {
     const v = url.searchParams.get("q")?.trim();
     if (v && v.length > 128) throw new SupplyError(422, "invalid-body", "q must be at most 128 characters.");
@@ -187,12 +190,20 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
       path: "/api/v1/images",
       auth: "ingest",
       handle: async ({ req, res, url }) => {
-        const { created, image } = supply.ingest({ name: url.searchParams.get("name"), digest: url.searchParams.get("digest") }, await readBody(req, BODY_LIMIT));
+        const { created, image } = supply.ingest(
+          { name: url.searchParams.get("name"), digest: url.searchParams.get("digest") },
+          await readBody(req, BODY_LIMIT),
+        );
         json(res, created ? 201 : 200, image, { location: `/api/v1/images/${image.id}` });
       },
     },
     // Before /images/:id, which would take "check" for an id.
-    { method: "GET", path: "/api/v1/images/check", auth: "check", handle: ({ url }) => supply.check(url.searchParams.get("name"), url.searchParams.get("digest")) },
+    {
+      method: "GET",
+      path: "/api/v1/images/check",
+      auth: "check",
+      handle: ({ url }) => supply.check(url.searchParams.get("name"), url.searchParams.get("digest")),
+    },
     {
       method: "GET",
       path: "/api/v1/images",
@@ -205,7 +216,12 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
     },
     { method: "GET", path: "/api/v1/images/:id", auth: "viewer", handle: ({ params }) => supply.image(params[0]!) },
     { method: "DELETE", path: "/api/v1/images/:id", auth: "admin", handle: ({ res, params }) => (supply.deleteImage(params[0]!), noContent(res)) },
-    { method: "GET", path: "/api/v1/images/:id/packages", auth: "viewer", handle: ({ url, params }) => page("packages", supply.packages(params[0]!, q(url), cursor(url), limit(url))) },
+    {
+      method: "GET",
+      path: "/api/v1/images/:id/packages",
+      auth: "viewer",
+      handle: ({ url, params }) => page("packages", supply.packages(params[0]!, q(url), cursor(url), limit(url))),
+    },
     {
       method: "GET",
       path: "/api/v1/images/:id/sbom",
@@ -217,7 +233,12 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
     },
 
     // Which images contain a package.
-    { method: "GET", path: "/api/v1/packages", auth: "viewer", handle: ({ url }) => page("usages", supply.whereUsed(url.searchParams.get("name"), url.searchParams.get("version"), cursor(url), limit(url))) },
+    {
+      method: "GET",
+      path: "/api/v1/packages",
+      auth: "viewer",
+      handle: ({ url }) => page("usages", supply.whereUsed(url.searchParams.get("name"), url.searchParams.get("version"), cursor(url), limit(url))),
+    },
 
     // The rules every image must meet.
     { method: "GET", path: "/api/v1/policy", auth: "viewer", handle: () => supply.policy() },
@@ -225,7 +246,12 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
 
     // Accepted risk, with a reason and an end.
     { method: "GET", path: "/api/v1/exceptions", auth: "viewer", handle: () => ({ exceptions: supply.listExceptions() }) },
-    { method: "POST", path: "/api/v1/exceptions", auth: "editor", handle: async ({ res, body, actor }) => json(res, 201, supply.createException(await body(), actor())) },
+    {
+      method: "POST",
+      path: "/api/v1/exceptions",
+      auth: "editor",
+      handle: async ({ res, body, actor }) => json(res, 201, supply.createException(await body(), actor())),
+    },
     { method: "DELETE", path: "/api/v1/exceptions/:id", auth: "editor", handle: ({ res, params }) => (supply.deleteException(params[0]!), noContent(res)) },
   ];
 
@@ -238,8 +264,10 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
     if (tokenMatches(req.headers.authorization, adminToken)) return "admin token";
     if (access === "ingest") {
       // An API token or a session with the editor role can send evidence too, for CI set up from Settings.
-      if (!ingestToken && !req.headers.authorization?.startsWith("Bearer oa_")) throw new SupplyError(503, "not-configured", "Set SUPPLY_CHAIN_INGEST_TOKEN on supply-chain, or send an API token with the editor role.");
-      if (!req.headers.authorization?.startsWith("Bearer oa_")) throw new SupplyError(401, "invalid-token", "Send SUPPLY_CHAIN_INGEST_TOKEN or an API token as a bearer token.");
+      if (!ingestToken && !req.headers.authorization?.startsWith("Bearer oa_"))
+        throw new SupplyError(503, "not-configured", "Set SUPPLY_CHAIN_INGEST_TOKEN on supply-chain, or send an API token with the editor role.");
+      if (!req.headers.authorization?.startsWith("Bearer oa_"))
+        throw new SupplyError(401, "invalid-token", "Send SUPPLY_CHAIN_INGEST_TOKEN or an API token as a bearer token.");
     }
     const p = auth.authorize(req, access === "ingest" ? "editor" : access === "check" ? "viewer" : access);
     return p.kind === "session" ? p.user.name : `API token ${p.name}`;

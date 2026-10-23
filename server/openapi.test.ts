@@ -45,7 +45,9 @@ async function call(method: string, path: string, init: RequestInit = {}, concre
   // A response is either inline or a $ref to components/responses; build the JSON pointer to its schema either way.
   const shared = declared!.$ref?.split("/").pop();
   const response = shared ? spec.components.responses[shared]! : declared!;
-  const at = shared ? `openapi#/components/responses/${shared}` : `openapi#/paths/${path.replaceAll("/", "~1")}/${method.toLowerCase()}/responses/${res.status}`;
+  const at = shared
+    ? `openapi#/components/responses/${shared}`
+    : `openapi#/paths/${path.replaceAll("/", "~1")}/${method.toLowerCase()}/responses/${res.status}`;
 
   if (!response.content) {
     expect(res.headers.get("content-length") ?? "0", `${method} ${path} ${res.status} should have no body`).toBe("0");
@@ -61,7 +63,10 @@ async function call(method: string, path: string, init: RequestInit = {}, concre
   return { res, body };
 }
 
-const auth = (token: string, body?: string, type = "application/json") => ({ headers: { authorization: `Bearer ${token}`, "content-type": type }, ...(body !== undefined && { body }) });
+const auth = (token: string, body?: string, type = "application/json") => ({
+  headers: { authorization: `Bearer ${token}`, "content-type": type },
+  ...(body !== undefined && { body }),
+});
 const ingest = () => auth(INGEST_TOKEN);
 const admin = (body?: unknown) => auth(ADMIN_TOKEN, body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body));
 const inDays = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString();
@@ -91,10 +96,25 @@ describe("responses match openapi.json", () => {
   const NAME = "ghcr.io/acme/app";
   let id = "";
   let exception = "";
-  const evidence = (extra: object = {}) => JSON.stringify({ sbom: cyclonedx(["openssl", "3.0.11", "Apache-2.0"], ["bash", "5.2", "GPL-3.0-or-later"]), signature: signed, provenance: slsa(3), ...extra });
+  const evidence = (extra: object = {}) =>
+    JSON.stringify({
+      sbom: cyclonedx(["openssl", "3.0.11", "Apache-2.0"], ["bash", "5.2", "GPL-3.0-or-later"]),
+      signature: signed,
+      provenance: slsa(3),
+      ...extra,
+    });
   const send = (body = evidence(), token = INGEST_TOKEN) => auth(token, body);
   const path = (n: number, name = NAME) => `/api/v1/images?name=${name}&digest=${digest(n)}`;
-  const policy = { requireSignature: true, allowedIdentities: [], allowedIssuers: [], requireSbom: true, requireProvenance: false, minProvenanceLevel: 0, licenceAllow: [], licenceDeny: [] };
+  const policy = {
+    requireSignature: true,
+    allowedIdentities: [],
+    allowedIssuers: [],
+    requireSbom: true,
+    requireProvenance: false,
+    minProvenanceLevel: 0,
+    licenceAllow: [],
+    licenceDeny: [],
+  };
 
   it("product and health", async () => {
     await call("GET", "/api/v1/version");
@@ -156,7 +176,11 @@ describe("responses match openapi.json", () => {
   });
 
   it("exceptions", async () => {
-    exception = ((await call("POST", "/api/v1/exceptions", admin({ name: NAME, rule: "licences", reason: "Build stage only", expiresAt: inDays(30) }))).body as { id: string }).id;
+    exception = (
+      (await call("POST", "/api/v1/exceptions", admin({ name: NAME, rule: "licences", reason: "Build stage only", expiresAt: inDays(30) }))).body as {
+        id: string;
+      }
+    ).id;
     await call("POST", "/api/v1/exceptions", admin({ name: NAME, digest: digest(1), rule: "all", reason: "Reviewed", expiresAt: inDays(5) }));
     await call("POST", "/api/v1/exceptions", admin({ name: NAME, rule: "licences", reason: "", expiresAt: inDays(30) }));
     await call("POST", "/api/v1/exceptions", admin("nope"));

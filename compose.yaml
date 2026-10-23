@@ -13,11 +13,11 @@ services:
     security_opt: ["no-new-privileges:true"]
     tmpfs: [/tmp]
     ports:
-      - "127.0.0.1:8080:8080"   # UI and API; put a TLS proxy in front to reach it from elsewhere
+      - "127.0.0.1:8080:8080" # UI and API; put a TLS proxy in front to reach it from elsewhere
     volumes:
-      - supply-chain-data:/data   # SQLite database: images, SBOMs, the policy and exceptions
+      - supply-chain-data:/data # SQLite database: images, SBOMs, the policy and exceptions
     secrets:
-      - openasy-kek   # mounted at /run/secrets/openasy-kek
+      - openasy-kek # mounted at /run/secrets/openasy-kek
     environment:
       # The address people open Supply Chain at; with a TLS proxy in front, its https:// URL.
       SUPPLY_CHAIN_PUBLIC_URL: ${SUPPLY_CHAIN_PUBLIC_URL:-http://localhost:8080}

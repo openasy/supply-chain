@@ -12,20 +12,42 @@ const json = async (res: Response) => (await res.json()) as any;
 const APP = "ghcr.io/acme/app";
 const sbom = cyclonedx(["openssl", "3.0.11", "Apache-2.0"], ["zlib", "1.2.13", "Zlib"], ["bash", "5.2", "GPL-3.0-or-later"]);
 const check = async (name: string, dig: string) => json(await app.ingest(`/api/v1/images/check?${new URLSearchParams({ name, digest: dig })}`));
-const putPolicy = (changes: Record<string, unknown>, base?: Record<string, unknown>) => app.admin("/api/v1/policy", { method: "PUT", body: JSON.stringify({ ...(base ?? DEFAULT), ...changes }) });
-const DEFAULT = { requireSignature: true, allowedIdentities: [], allowedIssuers: [], requireSbom: true, requireProvenance: false, minProvenanceLevel: 0, licenceAllow: [], licenceDeny: [] };
+const putPolicy = (changes: Record<string, unknown>, base?: Record<string, unknown>) =>
+  app.admin("/api/v1/policy", { method: "PUT", body: JSON.stringify({ ...(base ?? DEFAULT), ...changes }) });
+const DEFAULT = {
+  requireSignature: true,
+  allowedIdentities: [],
+  allowedIssuers: [],
+  requireSbom: true,
+  requireProvenance: false,
+  minProvenanceLevel: 0,
+  licenceAllow: [],
+  licenceDeny: [],
+};
 const inDays = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString();
 
 describe("evidence and the admission answer", () => {
   it("denies an image nobody reported on", async () => {
-    expect(await check(APP, digest(1))).toEqual({ allowed: false, image: null, reasons: [{ rule: "unknown-image", message: expect.stringContaining("CI must report it first"), waived: false }] });
+    expect(await check(APP, digest(1))).toEqual({
+      allowed: false,
+      image: null,
+      reasons: [{ rule: "unknown-image", message: expect.stringContaining("CI must report it first"), waived: false }],
+    });
   });
 
   it("allows an image with a signature and an SBOM under the default policy", async () => {
     const res = await app.send(APP, digest(1), { sbom, signature: signed, provenance: slsa(3) });
     expect(res.status).toBe(201);
     const image = await json(res);
-    expect(image).toMatchObject({ name: APP, digest: digest(1), allowed: true, reasons: [], sbom: { format: "cyclonedx-json", packages: 3 }, signature: { verified: true, identity: signed.identity }, provenance: { level: 3, sourceCommit: "abc123" } });
+    expect(image).toMatchObject({
+      name: APP,
+      digest: digest(1),
+      allowed: true,
+      reasons: [],
+      sbom: { format: "cyclonedx-json", packages: 3 },
+      signature: { verified: true, identity: signed.identity },
+      provenance: { level: 3, sourceCommit: "abc123" },
+    });
     expect(await check(APP, digest(1))).toMatchObject({ allowed: true, reasons: [], image: { id: image.id } });
   });
 
@@ -47,7 +69,11 @@ describe("evidence and the admission answer", () => {
   });
 
   it("takes a gzipped body", async () => {
-    const res = await app.ingest(`/api/v1/images?${new URLSearchParams({ name: "ghcr.io/acme/zipped", digest: digest(9) })}`, { method: "POST", body: gzipSync(JSON.stringify({ sbom })), headers: { "content-encoding": "gzip" } });
+    const res = await app.ingest(`/api/v1/images?${new URLSearchParams({ name: "ghcr.io/acme/zipped", digest: digest(9) })}`, {
+      method: "POST",
+      body: gzipSync(JSON.stringify({ sbom })),
+      headers: { "content-encoding": "gzip" },
+    });
     expect(res.status).toBe(201);
   });
 
@@ -90,7 +116,10 @@ describe("the policy", () => {
 
   it("denies a signature that did not verify, and one that was never checked", async () => {
     await app.send("ghcr.io/acme/bad", digest(10), { sbom, signature: { verified: false } });
-    expect(await check("ghcr.io/acme/bad", digest(10))).toMatchObject({ allowed: false, reasons: [{ rule: "signature", message: "The signature did not verify." }] });
+    expect(await check("ghcr.io/acme/bad", digest(10))).toMatchObject({
+      allowed: false,
+      reasons: [{ rule: "signature", message: "The signature did not verify." }],
+    });
     await app.send("ghcr.io/acme/unchecked", digest(11), { sbom });
     expect((await check("ghcr.io/acme/unchecked", digest(11))).reasons[0].message).toContain("No signature check");
   });
@@ -105,8 +134,14 @@ describe("the policy", () => {
   it("holds the signer to allowed identities (regular expressions) and issuers", async () => {
     await putPolicy({ allowedIdentities: ["^https://github\\.com/acme/.+/\\.github/workflows/release\\.yml@refs/tags/v.+$"] });
     expect(await check(APP, digest(1))).toMatchObject({ allowed: true });
-    await app.send("ghcr.io/acme/other", digest(12), { sbom, signature: { verified: true, identity: "https://github.com/evil/app/.github/workflows/release.yml@refs/tags/v1", issuer: signed.issuer } });
-    expect(await check("ghcr.io/acme/other", digest(12))).toMatchObject({ allowed: false, reasons: [{ rule: "signature", message: expect.stringContaining("does not allow") }] });
+    await app.send("ghcr.io/acme/other", digest(12), {
+      sbom,
+      signature: { verified: true, identity: "https://github.com/evil/app/.github/workflows/release.yml@refs/tags/v1", issuer: signed.issuer },
+    });
+    expect(await check("ghcr.io/acme/other", digest(12))).toMatchObject({
+      allowed: false,
+      reasons: [{ rule: "signature", message: expect.stringContaining("does not allow") }],
+    });
     await putPolicy({ allowedIdentities: [], allowedIssuers: ["https://accounts.google.com"] });
     expect(await check(APP, digest(1))).toMatchObject({ allowed: false, reasons: [{ rule: "signature", message: expect.stringContaining("issuer") }] });
     await putPolicy({});
@@ -115,7 +150,10 @@ describe("the policy", () => {
   it("holds provenance to a SLSA level", async () => {
     await putPolicy({ minProvenanceLevel: 2 });
     expect(await check(APP, digest(1))).toMatchObject({ allowed: true });
-    expect(await check(APP, digest(2))).toMatchObject({ allowed: false, reasons: [{ rule: "provenance", message: expect.stringContaining("level 1; the policy needs 2") }] });
+    expect(await check(APP, digest(2))).toMatchObject({
+      allowed: false,
+      reasons: [{ rule: "provenance", message: expect.stringContaining("level 1; the policy needs 2") }],
+    });
     expect(await check(APP, digest(3))).toMatchObject({ allowed: false, reasons: [{ rule: "provenance", message: expect.stringContaining("No provenance") }] });
     await putPolicy({ minProvenanceLevel: 0, requireProvenance: true });
     expect(await check(APP, digest(2))).toMatchObject({ allowed: true });
@@ -126,7 +164,10 @@ describe("the policy", () => {
   it("denies licences by list, and an OR is fine when one alternative is", async () => {
     await app.send("ghcr.io/acme/dual", digest(13), { sbom: cyclonedx(["x", "1", "GPL-3.0-only OR MIT"]), signature: signed });
     await putPolicy({ licenceDeny: ["GPL-3.0-or-later", "GPL-3.0-only"] });
-    expect(await check(APP, digest(1))).toMatchObject({ allowed: false, reasons: [{ rule: "licences", message: expect.stringContaining("1 packages carry licences") }] });
+    expect(await check(APP, digest(1))).toMatchObject({
+      allowed: false,
+      reasons: [{ rule: "licences", message: expect.stringContaining("1 packages carry licences") }],
+    });
     expect(await check("ghcr.io/acme/dual", digest(13))).toMatchObject({ allowed: true });
     await putPolicy({ licenceAllow: ["MIT"], licenceDeny: [] });
     expect(await check("ghcr.io/acme/dual", digest(13))).toMatchObject({ allowed: true });
@@ -134,12 +175,26 @@ describe("the policy", () => {
     await app.send("ghcr.io/acme/unnamed", digest(14), { sbom: cyclonedx(["y", "1"]), signature: signed });
     expect(await check("ghcr.io/acme/unnamed", digest(14))).toMatchObject({ allowed: false, reasons: [{ rule: "licences" }] });
     const detail = await json(await app.admin(`/api/v1/images/${(await check(APP, digest(1))).image.id}`));
-    expect(detail.licences).toEqual(expect.arrayContaining([{ licence: "GPL-3.0-or-later", packages: 1, verdict: "denied" }, { licence: "Zlib", packages: 1, verdict: "denied" }]));
+    expect(detail.licences).toEqual(
+      expect.arrayContaining([
+        { licence: "GPL-3.0-or-later", packages: 1, verdict: "denied" },
+        { licence: "Zlib", packages: 1, verdict: "denied" },
+      ]),
+    );
     await putPolicy({});
   });
 
   it("refuses a policy it cannot read, and a typo that would loosen it", async () => {
-    for (const bad of [{ requireSignature: "yes" }, { minProvenanceLevel: 5 }, { minProvenanceLevel: 1.5 }, { allowedIdentities: ["("] }, { allowedIdentities: "x" }, { licenceAllow: [""] }, { requireSignatur: false }, { licenceDeny: new Array(201).fill("x") }]) {
+    for (const bad of [
+      { requireSignature: "yes" },
+      { minProvenanceLevel: 5 },
+      { minProvenanceLevel: 1.5 },
+      { allowedIdentities: ["("] },
+      { allowedIdentities: "x" },
+      { licenceAllow: [""] },
+      { requireSignatur: false },
+      { licenceDeny: Array.from({ length: 201 }, () => "x") },
+    ]) {
       expect((await putPolicy(bad)).status, JSON.stringify(bad)).toBe(422);
     }
     const missing = { ...DEFAULT } as Record<string, unknown>;
@@ -188,7 +243,17 @@ describe("exceptions", () => {
 
   it("needs a reason, a known rule and an end within a year", async () => {
     const ok = { name: APP, rule: "licences", reason: "Fine for now", expiresAt: inDays(10) };
-    for (const bad of [{ reason: "" }, { reason: "x".repeat(501) }, { rule: "everything" }, { expiresAt: inDays(-1) }, { expiresAt: inDays(400) }, { expiresAt: "soon" }, { name: "Bad Name" }, { digest: "latest" }, { extra: 1 }]) {
+    for (const bad of [
+      { reason: "" },
+      { reason: "x".repeat(501) },
+      { rule: "everything" },
+      { expiresAt: inDays(-1) },
+      { expiresAt: inDays(400) },
+      { expiresAt: "soon" },
+      { name: "Bad Name" },
+      { digest: "latest" },
+      { extra: 1 },
+    ]) {
       expect((await add({ ...ok, ...bad })).status, JSON.stringify(bad)).toBe(422);
     }
   });
@@ -198,9 +263,19 @@ describe("the SBOM store", () => {
   it("tells which images contain a package, at any version or one", async () => {
     await app.send("ghcr.io/acme/old", digest(20), { sbom: cyclonedx(["openssl", "1.1.1w", "OpenSSL"]), signature: signed });
     const all = (await json(await app.admin("/api/v1/packages?name=openssl"))).usages;
-    expect(all.map((u: { image: { name: string }; version: string }) => `${u.image.name} ${u.version}`)).toEqual(expect.arrayContaining([`${APP} 3.0.11`, "ghcr.io/acme/old 1.1.1w"]));
+    expect(all.map((u: { image: { name: string }; version: string }) => `${u.image.name} ${u.version}`)).toEqual(
+      expect.arrayContaining([`${APP} 3.0.11`, "ghcr.io/acme/old 1.1.1w"]),
+    );
     const one = (await json(await app.admin("/api/v1/packages?name=openssl&version=1.1.1w"))).usages;
-    expect(one).toEqual([{ image: { id: expect.any(String), name: "ghcr.io/acme/old", digest: digest(20) }, package: "openssl", version: "1.1.1w", purl: "pkg:deb/debian/openssl@1.1.1w", licence: "OpenSSL" }]);
+    expect(one).toEqual([
+      {
+        image: { id: expect.any(String), name: "ghcr.io/acme/old", digest: digest(20) },
+        package: "openssl",
+        version: "1.1.1w",
+        purl: "pkg:deb/debian/openssl@1.1.1w",
+        licence: "OpenSSL",
+      },
+    ]);
     expect((await json(await app.admin("/api/v1/packages?name=nothing"))).usages).toEqual([]);
     expect((await app.admin("/api/v1/packages")).status).toBe(422);
   });
@@ -243,7 +318,8 @@ describe("access", () => {
     expect((await anon(`/api/v1/images/check?name=${APP}&digest=${digest(1)}`)).status).toBe(401);
     expect((await anon("/api/v1/images/check?name=a&digest=b", { headers: { authorization: "Bearer nope" } })).status).toBe(401);
     expect((await app.ingest(`/api/v1/images/check?name=${APP}&digest=${digest(1)}`)).status).toBe(200);
-    for (const path of ["/api/v1/images", "/api/v1/policy", "/api/v1/exceptions", "/api/v1/summary", "/api/v1/packages?name=a"]) expect((await app.ingest(path)).status, path).toBe(401);
+    for (const path of ["/api/v1/images", "/api/v1/policy", "/api/v1/exceptions", "/api/v1/summary", "/api/v1/packages?name=a"])
+      expect((await app.ingest(path)).status, path).toBe(401);
     expect((await app.ingest("/api/v1/policy", { method: "PUT", body: JSON.stringify(DEFAULT) })).status).toBe(401);
     const closed = await startApp({ version: "0.1.0", ingestToken: undefined, adminToken: undefined });
     expect((await fetch(`${closed.base}/api/v1/images?name=a&digest=b`, { method: "POST", body: "{}" })).status).toBe(503);

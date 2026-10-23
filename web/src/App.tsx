@@ -29,7 +29,19 @@ import {
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth } from "@openasy/auth/react";
 import { Download, Images, KeyRound, LogIn, LogOut, PackageSearch, ScrollText, Settings2, ShieldOff, Trash2, UserRound, Users } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { api, MfaSetupRequired, Unauthorized, type Exception, type Image, type ImageDetail, type Package, type Policy, type ProductLink, type Summary, type Usage } from "./api.ts";
+import {
+  api,
+  MfaSetupRequired,
+  Unauthorized,
+  type Exception,
+  type Image,
+  type ImageDetail,
+  type Package,
+  type Policy,
+  type ProductLink,
+  type Summary,
+  type Usage,
+} from "./api.ts";
 import { useT, type T } from "./i18n.ts";
 
 const PAGES = ["packages", "policy", "exceptions", "setup", "account", "members", "signin", "tokens"] as const;
@@ -61,7 +73,6 @@ function useApi() {
 }
 type Call = ReturnType<typeof useApi>;
 
-
 function Code({ children }: { children: ReactNode }) {
   return <pre className="m-0 overflow-x-auto rounded-md bg-subtle px-2.5 py-2 font-mono text-xs text-fg">{children}</pre>;
 }
@@ -71,10 +82,21 @@ const short = (digest: string) => digest.replace("sha256:", "").slice(0, 12);
 function StateBadge({ image }: { image: Pick<Image, "allowed" | "reasons"> }) {
   const t = useT();
   if (!image.allowed) return <StatusBadge tone="danger">{t("stateBadge.denied")}</StatusBadge>;
-  return image.reasons.length ? <StatusBadge tone="warning">{t("stateBadge.allowedByException")}</StatusBadge> : <StatusBadge tone="success">{t("stateBadge.allowed")}</StatusBadge>;
+  return image.reasons.length ? (
+    <StatusBadge tone="warning">{t("stateBadge.allowedByException")}</StatusBadge>
+  ) : (
+    <StatusBadge tone="success">{t("stateBadge.allowed")}</StatusBadge>
+  );
 }
 
-const RULE_LABEL = (t: T): Record<string, string> => ({ signature: "Signature", sbom: "SBOM", provenance: "Provenance", licences: "Licences", "unknown-image": t("ruleLabel.unknownImage"), all: t("ruleLabel.everyRule") });
+const RULE_LABEL = (t: T): Record<string, string> => ({
+  signature: "Signature",
+  sbom: "SBOM",
+  provenance: "Provenance",
+  licences: "Licences",
+  "unknown-image": t("ruleLabel.unknownImage"),
+  all: t("ruleLabel.everyRule"),
+});
 
 function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
   const ago = useAgo();
@@ -94,7 +116,14 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
     },
     [call, state, q],
   );
-  useEffect(() => void query().then((r) => (setRows(r.images), setMore(r.nextCursor)), () => setRows([])), [query]);
+  useEffect(
+    () =>
+      void query().then(
+        (r) => (setRows(r.images), setMore(r.nextCursor)),
+        () => setRows([]),
+      ),
+    [query],
+  );
   const loadMore = () => more && query(more).then((r) => (setRows((x) => [...(x ?? []), ...r.images]), setMore(r.nextCursor)));
 
   const columns: Column<Image>[] = [
@@ -130,12 +159,35 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
           <span className="text-xs text-fg-muted">{t("imagesPage.nothing")}</span>
         ),
     },
-    { id: "evidence", header: t("imagesPage.evidence"), cell: (i) => <span className="text-xs whitespace-nowrap">{[i.sbom && "SBOM", i.signature && (i.signature.verified ? "signed" : "unsigned"), i.provenance && `SLSA ${i.provenance.level ?? 0}`].filter(Boolean).join(" · ") || "none"}</span> },
-    { id: "updated", header: t("imagesPage.updated"), sortValue: (i) => i.updatedAt, cell: (i) => <span className="text-xs whitespace-nowrap">{ago(i.updatedAt)}</span> },
+    {
+      id: "evidence",
+      header: t("imagesPage.evidence"),
+      cell: (i) => (
+        <span className="text-xs whitespace-nowrap">
+          {[i.sbom && "SBOM", i.signature && (i.signature.verified ? "signed" : "unsigned"), i.provenance && `SLSA ${i.provenance.level ?? 0}`]
+            .filter(Boolean)
+            .join(" · ") || "none"}
+        </span>
+      ),
+    },
+    {
+      id: "updated",
+      header: t("imagesPage.updated"),
+      sortValue: (i) => i.updatedAt,
+      cell: (i) => <span className="text-xs whitespace-nowrap">{ago(i.updatedAt)}</span>,
+    },
   ];
   return (
     <>
-      <PageHeader title={t("imagesPage.images")} description={summary ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: summary.images }), value: summary.packages.toLocaleString() }) : undefined} actions={<SearchInput label={t("imagesPage.searchNameOrDigest")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />} />
+      <PageHeader
+        title={t("imagesPage.images")}
+        description={
+          summary
+            ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: summary.images }), value: summary.packages.toLocaleString() })
+            : undefined
+        }
+        actions={<SearchInput label={t("imagesPage.searchNameOrDigest")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />}
+      />
       {summary && (
         <KpiGrid minWidth={150}>
           <KpiCard label={t("imagesPage.allowed")} value={summary.allowed} tone="success" />
@@ -169,13 +221,36 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
           ) : undefined
         }
       >
-        <DataTable label={t("imagesPage.images")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(i) => i.id} minWidth={900} pageSize={50} empty={<EmptyState title={t("imagesPage.noImages")}>{t("imagesPage.nothingMatchesTheseFilters")}</EmptyState>} />
+        <DataTable
+          label={t("imagesPage.images")}
+          columns={columns}
+          rows={rows ?? []}
+          loading={!rows}
+          getRowId={(i) => i.id}
+          minWidth={900}
+          pageSize={50}
+          empty={<EmptyState title={t("imagesPage.noImages")}>{t("imagesPage.nothingMatchesTheseFilters")}</EmptyState>}
+        />
       </Panel>
     </>
   );
 }
 
-function ExceptionDialog({ call, image, rule, open, onClose, onDone }: { call: Call; image: Image; rule: string; open: boolean; onClose: () => void; onDone: () => void }) {
+function ExceptionDialog({
+  call,
+  image,
+  rule,
+  open,
+  onClose,
+  onDone,
+}: {
+  call: Call;
+  image: Image;
+  rule: string;
+  open: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const t = useT();
   const [reason, setReason] = useState("");
   const [days, setDays] = useState("30");
@@ -184,7 +259,16 @@ function ExceptionDialog({ call, image, rule, open, onClose, onDone }: { call: C
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await call("/api/v1/exceptions", { method: "POST", body: JSON.stringify({ name: image.name, ...(scope === "digest" && { digest: image.digest }), rule, reason, expiresAt: new Date(Date.now() + Number(days) * 86_400_000).toISOString() }) });
+      await call("/api/v1/exceptions", {
+        method: "POST",
+        body: JSON.stringify({
+          name: image.name,
+          ...(scope === "digest" && { digest: image.digest }),
+          rule,
+          reason,
+          expiresAt: new Date(Date.now() + Number(days) * 86_400_000).toISOString(),
+        }),
+      });
       setReason("");
       setError(undefined);
       onDone();
@@ -210,7 +294,13 @@ function ExceptionDialog({ call, image, rule, open, onClose, onDone }: { call: C
         </>
       }
     >
-      <TextField label={t("exceptionDialog.reason")} value={reason} onChange={(e) => setReason(e.target.value)} hint={t("exceptionDialog.whyItIsAcceptableFor")} error={error} />
+      <TextField
+        label={t("exceptionDialog.reason")}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        hint={t("exceptionDialog.whyItIsAcceptableFor")}
+        error={error}
+      />
       <div className="grid grid-cols-2 gap-2">
         <SelectField
           label={t("exceptionDialog.appliesTo")}
@@ -249,12 +339,19 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
 
   const load = useCallback(() => void call<ImageDetail>(`/api/v1/images/${id}`).then(setImage, () => setImage(null)), [call, id]);
   useEffect(load, [load]);
-  useEffect(() => void call<{ packages: Package[] }>(`/api/v1/images/${id}/packages?limit=500${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`).then((r) => setPackages(r.packages), () => setPackages([])), [call, id, q]);
+  useEffect(
+    () =>
+      void call<{ packages: Package[] }>(`/api/v1/images/${id}/packages?limit=500${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`).then(
+        (r) => setPackages(r.packages),
+        () => setPackages([]),
+      ),
+    [call, id, q],
+  );
 
   if (image === null)
     return (
       <EmptyState title={t("imagePage.imageNotFound")}>
-        {t("imagePage.itMayHaveBeenDeleted")}{" "}<a href="/images">{t("imagePage.backToImages")}</a>.
+        {t("imagePage.itMayHaveBeenDeleted")} <a href="/images">{t("imagePage.backToImages")}</a>.
       </EmptyState>
     );
 
@@ -324,11 +421,26 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
         <Panel title={t("imagePage.evidence")} description={t("imagePage.whatCiReportedThisProduct")}>
           <dl className="m-0 grid gap-x-4 gap-y-1 text-sm" style={{ gridTemplateColumns: "auto minmax(0, 1fr)" }}>
             <dt className="text-fg-muted">SBOM</dt>
-            <dd className="m-0">{image.sbom ? `${image.sbom.format}, ${t("plurals.package", { count: image.sbom.packages })}, ${ago(image.sbom.at)}` : "none"}</dd>
+            <dd className="m-0">
+              {image.sbom ? `${image.sbom.format}, ${t("plurals.package", { count: image.sbom.packages })}, ${ago(image.sbom.at)}` : "none"}
+            </dd>
             <dt className="text-fg-muted">{t("imagePage.signature")}</dt>
-            <dd className="supply-wrap m-0">{image.signature ? `${image.signature.verified ? "verified" : "did not verify"}${image.signature.identity ? ` · ${image.signature.identity}` : ""}${image.signature.issuer ? ` · ${image.signature.issuer}` : ""}` : t("imagePage.notReported")}</dd>
+            <dd className="supply-wrap m-0">
+              {image.signature
+                ? `${image.signature.verified ? "verified" : "did not verify"}${image.signature.identity ? ` · ${image.signature.identity}` : ""}${image.signature.issuer ? ` · ${image.signature.issuer}` : ""}`
+                : t("imagePage.notReported")}
+            </dd>
             <dt className="text-fg-muted">{t("imagePage.provenance")}</dt>
-            <dd className="supply-wrap m-0">{image.provenance ? t("imagePage.slsaLevel", { value: image.provenance.level ?? 0, value2: image.provenance.sourceRepo ? ` · ${image.provenance.sourceRepo}` : "", value3: image.provenance.sourceCommit ? `@${image.provenance.sourceCommit.slice(0, 8)}` : "", value4: image.provenance.builder ? ` · built by ${image.provenance.builder}` : "" }) : t("imagePage.notReported")}</dd>
+            <dd className="supply-wrap m-0">
+              {image.provenance
+                ? t("imagePage.slsaLevel", {
+                    value: image.provenance.level ?? 0,
+                    value2: image.provenance.sourceRepo ? ` · ${image.provenance.sourceRepo}` : "",
+                    value3: image.provenance.sourceCommit ? `@${image.provenance.sourceCommit.slice(0, 8)}` : "",
+                    value4: image.provenance.builder ? ` · built by ${image.provenance.builder}` : "",
+                  })
+                : t("imagePage.notReported")}
+            </dd>
           </dl>
         </Panel>
       )}
@@ -345,8 +457,21 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
           </ul>
         </Panel>
       )}
-      <Panel title={t("imagePage.packages")} actions={<SearchInput label={t("imagePage.searchPackages")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />} flush>
-        <DataTable label={t("imagePage.packages")} columns={columns} rows={packages ?? []} loading={!packages} getRowId={(p) => `${p.name}@${p.version}@${p.purl ?? ""}`} minWidth={640} pageSize={50} empty={<EmptyState title={t("imagePage.noPackages")}>{image?.sbom ? t("imagePage.nothingMatches") : t("imagePage.noSbomHasBeenStored")}</EmptyState>} />
+      <Panel
+        title={t("imagePage.packages")}
+        actions={<SearchInput label={t("imagePage.searchPackages")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />}
+        flush
+      >
+        <DataTable
+          label={t("imagePage.packages")}
+          columns={columns}
+          rows={packages ?? []}
+          loading={!packages}
+          getRowId={(p) => `${p.name}@${p.version}@${p.purl ?? ""}`}
+          minWidth={640}
+          pageSize={50}
+          empty={<EmptyState title={t("imagePage.noPackages")}>{image?.sbom ? t("imagePage.nothingMatches") : t("imagePage.noSbomHasBeenStored")}</EmptyState>}
+        />
       </Panel>
       {can("admin") && image && (
         <Panel title={t("imagePage.delete")} description={t("imagePage.removesTheImageWithIts")}>
@@ -398,7 +523,10 @@ function PackagesPage({ call }: { call: Call }) {
     const p = new URLSearchParams({ name: name.trim(), limit: "500" });
     if (version.trim()) p.set("version", version.trim());
     setSearched(true);
-    void call<{ usages: Usage[] }>(`/api/v1/packages?${p}`).then((r) => setRows(r.usages), () => setRows([]));
+    void call<{ usages: Usage[] }>(`/api/v1/packages?${p}`).then(
+      (r) => setRows(r.usages),
+      () => setRows([]),
+    );
   };
   const columns: Column<Usage>[] = [
     {
@@ -427,14 +555,26 @@ function PackagesPage({ call }: { call: Call }) {
       </Panel>
       {searched && (
         <Panel title={t("packagesPage.images")} flush>
-          <DataTable label={t("packagesPage.imagesWithThePackage")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(u) => `${u.image.id}@${u.version}`} minWidth={640} empty={<EmptyState title={t("packagesPage.noImageContainsIt")}>{t("packagesPage.nothingMatchesThisNameAnd")}</EmptyState>} />
+          <DataTable
+            label={t("packagesPage.imagesWithThePackage")}
+            columns={columns}
+            rows={rows ?? []}
+            loading={!rows}
+            getRowId={(u) => `${u.image.id}@${u.version}`}
+            minWidth={640}
+            empty={<EmptyState title={t("packagesPage.noImageContainsIt")}>{t("packagesPage.nothingMatchesThisNameAnd")}</EmptyState>}
+          />
         </Panel>
       )}
     </>
   );
 }
 
-const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
+const lines = (s: string) =>
+  s
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
 function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
   const t = useT();
@@ -447,13 +587,31 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
   const [deny, setDeny] = useState("");
   const [error, setError] = useState<string>();
   const [done, setDone] = useState(false);
-  const show = (x: Policy) => (setSaved(x), setP(x), setIdentities(x.allowedIdentities.join("\n")), setIssuers(x.allowedIssuers.join("\n")), setAllow(x.licenceAllow.join("\n")), setDeny(x.licenceDeny.join("\n")));
+  const show = (x: Policy) => (
+    setSaved(x),
+    setP(x),
+    setIdentities(x.allowedIdentities.join("\n")),
+    setIssuers(x.allowedIssuers.join("\n")),
+    setAllow(x.licenceAllow.join("\n")),
+    setDeny(x.licenceDeny.join("\n"))
+  );
   useEffect(() => void call<Policy>("/api/v1/policy").then(show, () => {}), [call]);
 
   const save = async () => {
     if (!p) return;
     try {
-      show(await call<Policy>("/api/v1/policy", { method: "PUT", body: JSON.stringify({ ...p, allowedIdentities: lines(identities), allowedIssuers: lines(issuers), licenceAllow: lines(allow), licenceDeny: lines(deny) }) }));
+      show(
+        await call<Policy>("/api/v1/policy", {
+          method: "PUT",
+          body: JSON.stringify({
+            ...p,
+            allowedIdentities: lines(identities),
+            allowedIssuers: lines(issuers),
+            licenceAllow: lines(allow),
+            licenceDeny: lines(deny),
+          }),
+        }),
+      );
       setError(undefined);
       setDone(true);
       reload();
@@ -477,15 +635,40 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
         <>
           <Panel title={t("policyPage.signature")} description={t("policyPage.ciRunsCosignVerifyAnd")}>
             <div className="flex flex-col gap-3">
-              <Switch checked={p.requireSignature} onCheckedChange={(v) => (setP({ ...p, requireSignature: v }), setDone(false))} label={t("policyPage.requireAVerifiedSignature")} disabled={readOnly} />
-              {area("Allowed signer identities", "One regular expression per line. The signer's identity must match one. Empty: any identity.", identities, setIdentities)}
-              {area("Allowed issuers", "One exact issuer per line, such as https://token.actions.githubusercontent.com. Empty: any issuer.", issuers, setIssuers)}
+              <Switch
+                checked={p.requireSignature}
+                onCheckedChange={(v) => (setP({ ...p, requireSignature: v }), setDone(false))}
+                label={t("policyPage.requireAVerifiedSignature")}
+                disabled={readOnly}
+              />
+              {area(
+                "Allowed signer identities",
+                "One regular expression per line. The signer's identity must match one. Empty: any identity.",
+                identities,
+                setIdentities,
+              )}
+              {area(
+                "Allowed issuers",
+                "One exact issuer per line, such as https://token.actions.githubusercontent.com. Empty: any issuer.",
+                issuers,
+                setIssuers,
+              )}
             </div>
           </Panel>
           <Panel title={t("policyPage.sbomAndProvenance")}>
             <div className="flex flex-col gap-3">
-              <Switch checked={p.requireSbom} onCheckedChange={(v) => (setP({ ...p, requireSbom: v }), setDone(false))} label={t("policyPage.requireAnSbom")} disabled={readOnly} />
-              <Switch checked={p.requireProvenance} onCheckedChange={(v) => (setP({ ...p, requireProvenance: v }), setDone(false))} label={t("policyPage.requireProvenance")} disabled={readOnly} />
+              <Switch
+                checked={p.requireSbom}
+                onCheckedChange={(v) => (setP({ ...p, requireSbom: v }), setDone(false))}
+                label={t("policyPage.requireAnSbom")}
+                disabled={readOnly}
+              />
+              <Switch
+                checked={p.requireProvenance}
+                onCheckedChange={(v) => (setP({ ...p, requireProvenance: v }), setDone(false))}
+                label={t("policyPage.requireProvenance")}
+                disabled={readOnly}
+              />
               <SelectField
                 label={t("policyPage.lowestSlsaBuildLevel")}
                 value={String(p.minProvenanceLevel)}
@@ -522,15 +705,45 @@ function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
   const t = useT();
   const { can } = useAuth();
   const [rows, setRows] = useState<Exception[]>();
-  const load = useCallback(() => void call<{ exceptions: Exception[] }>("/api/v1/exceptions").then((r) => setRows(r.exceptions), () => setRows([])), [call]);
+  const load = useCallback(
+    () =>
+      void call<{ exceptions: Exception[] }>("/api/v1/exceptions").then(
+        (r) => setRows(r.exceptions),
+        () => setRows([]),
+      ),
+    [call],
+  );
   useEffect(load, [load]);
   const columns: Column<Exception>[] = [
-    { id: "name", header: t("exceptionsPage.image"), cell: (e) => <span className="supply-wrap">{e.name}{e.digest ? <span className="font-mono text-xs text-fg-muted"> {short(e.digest)}</span> : ""}</span> },
+    {
+      id: "name",
+      header: t("exceptionsPage.image"),
+      cell: (e) => (
+        <span className="supply-wrap">
+          {e.name}
+          {e.digest ? <span className="font-mono text-xs text-fg-muted"> {short(e.digest)}</span> : ""}
+        </span>
+      ),
+    },
     { id: "rule", header: t("exceptionsPage.waives"), cell: (e) => <Badge>{RULE_LABEL(t)[e.rule]}</Badge> },
     { id: "reason", header: t("exceptionsPage.reason"), width: "34%", cell: (e) => <span className="text-xs">{e.reason}</span> },
     { id: "by", header: t("exceptionsPage.by"), cell: (e) => <span className="text-xs">{e.by ?? "–"}</span> },
-    { id: "expires", header: t("exceptionsPage.ends"), sortValue: (e) => e.expiresAt, cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.expiresAt).toLocaleDateString()}</span> },
-    { id: "state", header: t("exceptionsPage.state"), cell: (e) => (e.active ? <StatusBadge tone="success">{t("exceptionsPage.active")}</StatusBadge> : <StatusBadge tone="neutral">{t("exceptionsPage.ended")}</StatusBadge>) },
+    {
+      id: "expires",
+      header: t("exceptionsPage.ends"),
+      sortValue: (e) => e.expiresAt,
+      cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.expiresAt).toLocaleDateString()}</span>,
+    },
+    {
+      id: "state",
+      header: t("exceptionsPage.state"),
+      cell: (e) =>
+        e.active ? (
+          <StatusBadge tone="success">{t("exceptionsPage.active")}</StatusBadge>
+        ) : (
+          <StatusBadge tone="neutral">{t("exceptionsPage.ended")}</StatusBadge>
+        ),
+    },
     {
       id: "remove",
       header: <span className="sr-only">{t("exceptionsPage.remove")}</span>,
@@ -538,7 +751,11 @@ function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
       align: "right",
       cell: (e) =>
         can("editor") && (
-          <IconButton label={t("exceptionsPage.removeTheExceptionFor", { name: e.name })} size="sm" onClick={() => void call(`/api/v1/exceptions/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()))}>
+          <IconButton
+            label={t("exceptionsPage.removeTheExceptionFor", { name: e.name })}
+            size="sm"
+            onClick={() => void call(`/api/v1/exceptions/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()))}
+          >
             <Trash2 />
           </IconButton>
         ),
@@ -548,7 +765,15 @@ function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
     <>
       <PageHeader title={t("exceptionsPage.exceptions")} description={t("exceptionsPage.aRuleWaivedForAn")} />
       <Panel flush>
-        <DataTable label={t("exceptionsPage.exceptions")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(e) => e.id} minWidth={900} empty={<EmptyState title={t("exceptionsPage.noExceptions")}>{t("exceptionsPage.everyRuleAppliesToEvery")}</EmptyState>} />
+        <DataTable
+          label={t("exceptionsPage.exceptions")}
+          columns={columns}
+          rows={rows ?? []}
+          loading={!rows}
+          getRowId={(e) => e.id}
+          minWidth={900}
+          empty={<EmptyState title={t("exceptionsPage.noExceptions")}>{t("exceptionsPage.everyRuleAppliesToEvery")}</EmptyState>}
+        />
       </Panel>
     </>
   );
@@ -592,7 +817,11 @@ function WelcomePage() {
   const t = useT();
   return (
     <>
-      <PageHeader title={t("welcomePage.getStarted")} description={t("welcomePage.reportAnImageFromCi")} actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstImage")}</StatusBadge>} />
+      <PageHeader
+        title={t("welcomePage.getStarted")}
+        description={t("welcomePage.reportAnImageFromCi")}
+        actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstImage")}</StatusBadge>}
+      />
       <SetupPage />
     </>
   );
@@ -607,8 +836,14 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
   if (page !== "account" && !can("admin")) return <EmptyState title={t("settingsPage.adminsOnly")}>{t("settingsPage.askAnAdminOfThis")}</EmptyState>;
   const titles = {
     account: ["Account", "Your profile, password, two-step verification and where you are signed in."],
-    members: ["Members", "Who can sign in to this supply-chain, and with which role. Viewers see everything; editors also add exceptions; admins also change the policy, delete images, and manage members and tokens."],
-    signin: ["Sign-in", "Identity providers people can sign in with, such as OpenAsy Identity, Keycloak or Microsoft Entra ID, and which of their groups give which role."],
+    members: [
+      "Members",
+      "Who can sign in to this supply-chain, and with which role. Viewers see everything; editors also add exceptions; admins also change the policy, delete images, and manage members and tokens.",
+    ],
+    signin: [
+      "Sign-in",
+      "Identity providers people can sign in with, such as OpenAsy Identity, Keycloak or Microsoft Entra ID, and which of their groups give which role.",
+    ],
     tokens: ["API tokens", "For scripts and CI. Each token has one role and an expiry; the secret is shown once."],
   } as const;
   return (
@@ -641,7 +876,10 @@ function Product() {
   // The install's other products (OPENASY_PRODUCTS), for the switcher; ids this UI does not know are left out.
   useEffect(() => {
     void call<{ products: ProductLink[] }>("/api/v1/products").then(
-      (r) => setProducts(r.products.filter((p): p is ProductLink & { id: ProductId } => p.id !== "supply-chain" && (PRODUCT_IDS as readonly string[]).includes(p.id))),
+      (r) =>
+        setProducts(
+          r.products.filter((p): p is ProductLink & { id: ProductId } => p.id !== "supply-chain" && (PRODUCT_IDS as readonly string[]).includes(p.id)),
+        ),
       () => {},
     );
   }, [call]);

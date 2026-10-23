@@ -4,7 +4,8 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { judge, UNKNOWN, type LicencePolicy, type Verdict } from "./licence.ts";
 import { parseSbom, SbomError, type Pkg, type SbomFormat } from "./sbom.ts";
 
-export type ProblemCode = "invalid-token" | "invalid-json" | "invalid-body" | "invalid-sbom" | "not-found" | "not-configured" | "payload-too-large" | "internal-error";
+export type ProblemCode =
+  "invalid-token" | "invalid-json" | "invalid-body" | "invalid-sbom" | "not-found" | "not-configured" | "payload-too-large" | "internal-error";
 
 export class SupplyError extends Error {
   readonly status: number;
@@ -81,7 +82,8 @@ export function parseLimit(value: string | null, max = 500, fallback = 100): num
 }
 
 const strList = (value: unknown, what: string): string[] => {
-  if (!Array.isArray(value) || value.length > MAX_LIST || value.some((v) => typeof v !== "string" || !v.trim() || v.length > 256)) throw bad(`${what} must be a list of at most ${MAX_LIST} non-empty strings.`);
+  if (!Array.isArray(value) || value.length > MAX_LIST || value.some((v) => typeof v !== "string" || !v.trim() || v.length > 256))
+    throw bad(`${what} must be a list of at most ${MAX_LIST} non-empty strings.`);
   return [...new Set((value as string[]).map((v) => v.trim()))];
 };
 
@@ -89,8 +91,10 @@ const strList = (value: unknown, what: string): string[] => {
 export function parsePolicy(body: Record<string, unknown>): Policy {
   const { requireSignature, allowedIdentities, allowedIssuers, requireSbom, requireProvenance, minProvenanceLevel, licenceAllow, licenceDeny, ...rest } = body;
   if (Object.keys(rest).length) throw bad(`Unknown policy fields: ${Object.keys(rest).join(", ")}.`);
-  for (const [k, v] of Object.entries({ requireSignature, requireSbom, requireProvenance })) if (typeof v !== "boolean") throw bad(`${k} must be true or false.`);
-  if (!Number.isInteger(minProvenanceLevel) || (minProvenanceLevel as number) < 0 || (minProvenanceLevel as number) > 4) throw bad("minProvenanceLevel must be a whole number from 0 to 4.");
+  for (const [k, v] of Object.entries({ requireSignature, requireSbom, requireProvenance }))
+    if (typeof v !== "boolean") throw bad(`${k} must be true or false.`);
+  if (!Number.isInteger(minProvenanceLevel) || (minProvenanceLevel as number) < 0 || (minProvenanceLevel as number) > 4)
+    throw bad("minProvenanceLevel must be a whole number from 0 to 4.");
   const identities = strList(allowedIdentities, "allowedIdentities");
   for (const pattern of identities) {
     try {
@@ -141,7 +145,11 @@ const ref = (name: string, digest: string) => `${name}@${digest}`;
 
 export function createSupply(db: DatabaseSync) {
   const rowOf = (id: string) => {
-    const r = db.prepare("SELECT id, name, digest, sbom_format, sbom_at, signature_verified, signature_identity, signature_issuer, signature_at, provenance_builder, provenance_repo, provenance_commit, provenance_level, provenance_at, created_at, updated_at FROM images WHERE id = ?").get(id) as ImageRow | undefined;
+    const r = db
+      .prepare(
+        "SELECT id, name, digest, sbom_format, sbom_at, signature_verified, signature_identity, signature_issuer, signature_at, provenance_builder, provenance_repo, provenance_commit, provenance_level, provenance_at, created_at, updated_at FROM images WHERE id = ?",
+      )
+      .get(id) as ImageRow | undefined;
     if (!r) throw notFound("The image");
     return r;
   };
@@ -152,11 +160,16 @@ export function createSupply(db: DatabaseSync) {
   }
 
   const activeExceptions = (name: string, digest: string) =>
-    db.prepare("SELECT * FROM exceptions WHERE name = ? AND (digest IS NULL OR digest = ?) AND expires_at > ?").all(name, digest, now()) as Array<{ rule: string }>;
+    db.prepare("SELECT * FROM exceptions WHERE name = ? AND (digest IS NULL OR digest = ?) AND expires_at > ?").all(name, digest, now()) as Array<{
+      rule: string;
+    }>;
 
   /** Licences of an image as the distinct expressions with how many packages carry each, judged by the policy. */
   function licences(imageId: string, p: LicencePolicy) {
-    const rows = db.prepare("SELECT licence, COUNT(*) AS n FROM packages WHERE image_id = ? GROUP BY licence ORDER BY n DESC, licence").all(imageId) as Array<{ licence: string | null; n: number }>;
+    const rows = db.prepare("SELECT licence, COUNT(*) AS n FROM packages WHERE image_id = ? GROUP BY licence ORDER BY n DESC, licence").all(imageId) as Array<{
+      licence: string | null;
+      n: number;
+    }>;
     return rows.map((r) => ({ licence: r.licence ?? UNKNOWN, packages: r.n, verdict: judge(r.licence, p) as Verdict }));
   }
 
@@ -168,18 +181,28 @@ export function createSupply(db: DatabaseSync) {
       if (r.signature_verified === null) found.push({ rule: "signature", message: "No signature check has been reported for this image." });
       else if (r.signature_verified === 0) found.push({ rule: "signature", message: "The signature did not verify." });
       else {
-        if (p.allowedIdentities.length && !p.allowedIdentities.some((x) => new RegExp(x).test(r.signature_identity ?? ""))) found.push({ rule: "signature", message: `Signed by ${r.signature_identity ?? "an unknown identity"}, which the policy does not allow.` });
-        if (p.allowedIssuers.length && !p.allowedIssuers.includes(r.signature_issuer ?? "")) found.push({ rule: "signature", message: `The signer's issuer ${r.signature_issuer ?? "(none)"} is not allowed.` });
+        if (p.allowedIdentities.length && !p.allowedIdentities.some((x) => new RegExp(x).test(r.signature_identity ?? "")))
+          found.push({ rule: "signature", message: `Signed by ${r.signature_identity ?? "an unknown identity"}, which the policy does not allow.` });
+        if (p.allowedIssuers.length && !p.allowedIssuers.includes(r.signature_issuer ?? ""))
+          found.push({ rule: "signature", message: `The signer's issuer ${r.signature_issuer ?? "(none)"} is not allowed.` });
       }
     }
     if (p.requireSbom && !r.sbom_at) found.push({ rule: "sbom", message: "No SBOM has been stored for this image." });
     if (p.requireProvenance || p.minProvenanceLevel > 0) {
       if (r.provenance_at === null) found.push({ rule: "provenance", message: "No provenance has been reported for this image." });
-      else if ((r.provenance_level ?? 0) < p.minProvenanceLevel) found.push({ rule: "provenance", message: `Provenance is SLSA level ${r.provenance_level ?? 0}; the policy needs ${p.minProvenanceLevel}.` });
+      else if ((r.provenance_level ?? 0) < p.minProvenanceLevel)
+        found.push({ rule: "provenance", message: `Provenance is SLSA level ${r.provenance_level ?? 0}; the policy needs ${p.minProvenanceLevel}.` });
     }
     if (r.sbom_at && (p.licenceAllow.length || p.licenceDeny.length)) {
       const bad = licences(r.id, { allow: p.licenceAllow, deny: p.licenceDeny }).filter((l) => l.verdict === "denied");
-      if (bad.length) found.push({ rule: "licences", message: `${bad.reduce((a, l) => a + l.packages, 0)} packages carry licences the policy does not allow: ${bad.slice(0, 5).map((l) => l.licence).join(", ")}${bad.length > 5 ? ", …" : ""}.` });
+      if (bad.length)
+        found.push({
+          rule: "licences",
+          message: `${bad.reduce((a, l) => a + l.packages, 0)} packages carry licences the policy does not allow: ${bad
+            .slice(0, 5)
+            .map((l) => l.licence)
+            .join(", ")}${bad.length > 5 ? ", …" : ""}.`,
+        });
     }
     const waivers = new Set(activeExceptions(r.name, r.digest).map((e) => e.rule));
     const reasons: Reason[] = found.map((f) => ({ ...f, waived: waivers.has("all") || waivers.has(f.rule) }));
@@ -194,16 +217,36 @@ export function createSupply(db: DatabaseSync) {
       digest: r.digest,
       allowed: e.allowed,
       reasons: e.reasons,
-      sbom: r.sbom_at ? { format: r.sbom_format!, at: r.sbom_at, packages: (db.prepare("SELECT COUNT(*) AS n FROM packages WHERE image_id = ?").get(r.id) as { n: number }).n } : null,
-      signature: r.signature_at ? { verified: r.signature_verified === 1, identity: r.signature_identity, issuer: r.signature_issuer, at: r.signature_at } : null,
-      provenance: r.provenance_at ? { builder: r.provenance_builder, sourceRepo: r.provenance_repo, sourceCommit: r.provenance_commit, level: r.provenance_level, at: r.provenance_at } : null,
+      sbom: r.sbom_at
+        ? {
+            format: r.sbom_format!,
+            at: r.sbom_at,
+            packages: (db.prepare("SELECT COUNT(*) AS n FROM packages WHERE image_id = ?").get(r.id) as { n: number }).n,
+          }
+        : null,
+      signature: r.signature_at
+        ? { verified: r.signature_verified === 1, identity: r.signature_identity, issuer: r.signature_issuer, at: r.signature_at }
+        : null,
+      provenance: r.provenance_at
+        ? { builder: r.provenance_builder, sourceRepo: r.provenance_repo, sourceCommit: r.provenance_commit, level: r.provenance_level, at: r.provenance_at }
+        : null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
   }
 
   function presentException(e: Record<string, any>) {
-    return { id: e.id as string, name: e.name as string, digest: (e.digest as string | null) ?? null, rule: e.rule as (typeof WAIVES)[number], reason: e.reason as string, by: (e.created_by as string | null) ?? null, createdAt: e.created_at as string, expiresAt: e.expires_at as string, active: (e.expires_at as string) > now() };
+    return {
+      id: e.id as string,
+      name: e.name as string,
+      digest: (e.digest as string | null) ?? null,
+      rule: e.rule as (typeof WAIVES)[number],
+      reason: e.reason as string,
+      by: (e.created_by as string | null) ?? null,
+      createdAt: e.created_at as string,
+      expiresAt: e.expires_at as string,
+      active: (e.expires_at as string) > now(),
+    };
   }
 
   const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
@@ -226,7 +269,8 @@ export function createSupply(db: DatabaseSync) {
         throw new SupplyError(422, "invalid-json", "The body must be a JSON object: { sbom?, signature?, provenance? }.");
       }
       const { sbom, signature, provenance, ...rest } = body;
-      if (Object.keys(rest).length || (sbom === undefined && signature === undefined && provenance === undefined)) throw bad("Expected { sbom?, signature?, provenance? } with at least one of them.");
+      if (Object.keys(rest).length || (sbom === undefined && signature === undefined && provenance === undefined))
+        throw bad("Expected { sbom?, signature?, provenance? } with at least one of them.");
 
       let packages: Pkg[] | undefined;
       let format: SbomFormat | undefined;
@@ -239,12 +283,19 @@ export function createSupply(db: DatabaseSync) {
         }
       }
       if (signature !== undefined) {
-        if (signature === null || typeof signature !== "object" || typeof signature.verified !== "boolean" || (signature.identity != null && typeof signature.identity !== "string") || (signature.issuer != null && typeof signature.issuer !== "string"))
+        if (
+          signature === null ||
+          typeof signature !== "object" ||
+          typeof signature.verified !== "boolean" ||
+          (signature.identity != null && typeof signature.identity !== "string") ||
+          (signature.issuer != null && typeof signature.issuer !== "string")
+        )
           throw bad("signature must be { verified, identity?, issuer? }.");
       }
       if (provenance !== undefined) {
         const l = provenance?.level;
-        if (provenance === null || typeof provenance !== "object" || !Number.isInteger(l) || l < 0 || l > 4) throw bad("provenance must be { builder?, sourceRepo?, sourceCommit?, level } with level from 0 to 4.");
+        if (provenance === null || typeof provenance !== "object" || !Number.isInteger(l) || l < 0 || l > 4)
+          throw bad("provenance must be { builder?, sourceRepo?, sourceCommit?, level } with level from 0 to 4.");
       }
 
       const at = now();
@@ -262,8 +313,18 @@ export function createSupply(db: DatabaseSync) {
           for (const p of packages) insert.run(id, p.name, p.version, p.purl, p.licence);
           db.prepare("UPDATE images SET sbom = ?, sbom_format = ?, sbom_at = ? WHERE id = ?").run(gzipSync(Buffer.from(JSON.stringify(sbom))), format!, at, id);
         }
-        if (signature) db.prepare("UPDATE images SET signature_verified = ?, signature_identity = ?, signature_issuer = ?, signature_at = ? WHERE id = ?").run(signature.verified ? 1 : 0, text(signature.identity, 512), text(signature.issuer, 512), at, id);
-        if (provenance) db.prepare("UPDATE images SET provenance_builder = ?, provenance_repo = ?, provenance_commit = ?, provenance_level = ?, provenance_at = ? WHERE id = ?").run(text(provenance.builder, 512), text(provenance.sourceRepo, 512), text(provenance.sourceCommit, 128), provenance.level, at, id);
+        if (signature)
+          db.prepare("UPDATE images SET signature_verified = ?, signature_identity = ?, signature_issuer = ?, signature_at = ? WHERE id = ?").run(
+            signature.verified ? 1 : 0,
+            text(signature.identity, 512),
+            text(signature.issuer, 512),
+            at,
+            id,
+          );
+        if (provenance)
+          db.prepare(
+            "UPDATE images SET provenance_builder = ?, provenance_repo = ?, provenance_commit = ?, provenance_level = ?, provenance_at = ? WHERE id = ?",
+          ).run(text(provenance.builder, 512), text(provenance.sourceRepo, 512), text(provenance.sourceCommit, 128), provenance.level, at, id);
         db.prepare("UPDATE images SET updated_at = ? WHERE id = ?").run(at, id);
         db.exec("COMMIT");
         return { created, image: present(rowOf(id)) };
@@ -282,7 +343,9 @@ export function createSupply(db: DatabaseSync) {
         args.push(like, like);
       }
       // The state depends on the policy of the moment, so it is worked out per image and filtered here.
-      const rows = db.prepare(`SELECT id FROM images ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC, id`).all(...args) as Array<{ id: string }>;
+      const rows = db
+        .prepare(`SELECT id FROM images ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC, id`)
+        .all(...args) as Array<{ id: string }>;
       const offset = decodeCursor(cursor);
       const items: ReturnType<typeof present>[] = [];
       let seen = 0;
@@ -309,8 +372,13 @@ export function createSupply(db: DatabaseSync) {
       rowOf(id);
       const offset = decodeCursor(cursor);
       const like = q ? `%${q.replace(/[\\%_]/g, "\\$&")}%` : "%";
-      const rows = db.prepare("SELECT name, version, purl, licence FROM packages WHERE image_id = ? AND name LIKE ? ESCAPE '\\' ORDER BY name, version LIMIT ? OFFSET ?").all(id, like, limit + 1, offset) as Array<{ name: string; version: string; purl: string | null; licence: string | null }>;
-      return { items: rows.slice(0, limit).map((p) => ({ name: p.name, version: p.version, purl: p.purl, licence: p.licence })), ...(rows.length > limit && { nextCursor: encodeCursor(offset + limit) }) } satisfies Page<unknown>;
+      const rows = db
+        .prepare("SELECT name, version, purl, licence FROM packages WHERE image_id = ? AND name LIKE ? ESCAPE '\\' ORDER BY name, version LIMIT ? OFFSET ?")
+        .all(id, like, limit + 1, offset) as Array<{ name: string; version: string; purl: string | null; licence: string | null }>;
+      return {
+        items: rows.slice(0, limit).map((p) => ({ name: p.name, version: p.version, purl: p.purl, licence: p.licence })),
+        ...(rows.length > limit && { nextCursor: encodeCursor(offset + limit) }),
+      } satisfies Page<unknown>;
     },
 
     sbom(id: string) {
@@ -329,7 +397,12 @@ export function createSupply(db: DatabaseSync) {
       if (!name || !NAME.test(name)) throw bad("name is required: the image without tag or digest.");
       if (!digest || !DIGEST.test(digest)) throw bad("digest is required: sha256: and 64 hex digits.");
       const r = db.prepare("SELECT id FROM images WHERE name = ? AND digest = ?").get(name, digest) as { id: string } | undefined;
-      if (!r) return { allowed: false, image: null, reasons: [{ rule: "unknown-image" as const, message: `Nothing is known about ${ref(name, digest)}; CI must report it first.`, waived: false }] };
+      if (!r)
+        return {
+          allowed: false,
+          image: null,
+          reasons: [{ rule: "unknown-image" as const, message: `Nothing is known about ${ref(name, digest)}; CI must report it first.`, waived: false }],
+        };
       const e = evaluate(rowOf(r.id));
       return { allowed: e.allowed, image: { id: r.id }, reasons: e.reasons };
     },
@@ -345,7 +418,13 @@ export function createSupply(db: DatabaseSync) {
         )
         .all(...([name.trim(), ...(version ? [version] : []), limit + 1, offset] as SQLInputValue[])) as Array<Record<string, string | null>>;
       return {
-        items: rows.slice(0, limit).map((r) => ({ image: { id: r.id!, name: r.image!, digest: r.digest! }, package: r.package!, version: r.version!, purl: r.purl ?? null, licence: r.licence ?? null })),
+        items: rows.slice(0, limit).map((r) => ({
+          image: { id: r.id!, name: r.image!, digest: r.digest! },
+          package: r.package!,
+          version: r.version!,
+          purl: r.purl ?? null,
+          licence: r.licence ?? null,
+        })),
         ...(rows.length > limit && { nextCursor: encodeCursor(offset + limit) }),
       } satisfies Page<unknown>;
     },
@@ -360,7 +439,8 @@ export function createSupply(db: DatabaseSync) {
     listExceptions: () => (db.prepare("SELECT * FROM exceptions ORDER BY expires_at").all() as Array<Record<string, any>>).map(presentException),
     createException(body: Record<string, unknown>, by: string) {
       const { name, digest, rule, reason, expiresAt, ...rest } = body;
-      if (Object.keys(rest).length || typeof name !== "string" || !NAME.test(name)) throw bad("Expected { name, digest?, rule, reason, expiresAt }; name is the image without tag or digest.");
+      if (Object.keys(rest).length || typeof name !== "string" || !NAME.test(name))
+        throw bad("Expected { name, digest?, rule, reason, expiresAt }; name is the image without tag or digest.");
       if (digest != null && (typeof digest !== "string" || !DIGEST.test(digest))) throw bad("digest must be sha256: and 64 hex digits.");
       if (typeof rule !== "string" || !WAIVES.includes(rule as (typeof WAIVES)[number])) throw bad(`rule must be one of ${WAIVES.join(", ")}.`);
       // A decision without a reason is lost the day its author leaves (ADR 0043).
@@ -369,7 +449,16 @@ export function createSupply(db: DatabaseSync) {
       if (Number.isNaN(t) || t <= Date.now()) throw bad("expiresAt must be a date in the future.");
       if (t > Date.now() + MAX_EXCEPTION_DAYS * 86_400_000) throw bad(`expiresAt must be within ${MAX_EXCEPTION_DAYS} days.`);
       const id = randomUUID();
-      db.prepare("INSERT INTO exceptions (id, name, digest, rule, reason, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, name, (digest as string | null | undefined) ?? null, rule, reason.trim(), by, now(), new Date(t).toISOString());
+      db.prepare("INSERT INTO exceptions (id, name, digest, rule, reason, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+        id,
+        name,
+        (digest as string | null | undefined) ?? null,
+        rule,
+        reason.trim(),
+        by,
+        now(),
+        new Date(t).toISOString(),
+      );
       return presentException(db.prepare("SELECT * FROM exceptions WHERE id = ?").get(id) as Record<string, any>);
     },
     deleteException(id: string) {

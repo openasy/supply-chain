@@ -40,8 +40,17 @@ export const spdx = (...packages: Array<[string, string, string?]>) => ({
   })),
 });
 
-export const signed = { verified: true, identity: "https://github.com/acme/app/.github/workflows/release.yml@refs/tags/v1", issuer: "https://token.actions.githubusercontent.com" };
-export const slsa = (level: number) => ({ builder: "https://github.com/slsa-framework/slsa-github-generator", sourceRepo: "github.com/acme/app", sourceCommit: "abc123", level });
+export const signed = {
+  verified: true,
+  identity: "https://github.com/acme/app/.github/workflows/release.yml@refs/tags/v1",
+  issuer: "https://token.actions.githubusercontent.com",
+};
+export const slsa = (level: number) => ({
+  builder: "https://github.com/slsa-framework/slsa-github-generator",
+  sourceRepo: "github.com/acme/app",
+  sourceCommit: "abc123",
+  level,
+});
 
 export async function startApp(opts: Partial<AppOptions> & { version: string }) {
   const db = openDb(":memory:");
@@ -53,11 +62,15 @@ export async function startApp(opts: Partial<AppOptions> & { version: string }) 
   const base = `http://localhost:${(server.address() as AddressInfo).port}`;
   const auth = createAuth({ db, product: "supply-chain", productName: "OpenAsy Supply Chain", origin: base });
   handler = createApp({ db, supply, auth, ingestToken: INGEST_TOKEN, adminToken: ADMIN_TOKEN, ...opts });
-  const as = (token: string) => (path: string, init: RequestInit = {}) => fetch(base + path, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
+  const as =
+    (token: string) =>
+    (path: string, init: RequestInit = {}) =>
+      fetch(base + path, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
   const admin = as(ADMIN_TOKEN);
   const ingest = as(INGEST_TOKEN);
   /** Sends evidence the way CI does. */
-  const send = (name: string, dig: string, evidence: unknown) => ingest(`/api/v1/images?${new URLSearchParams({ name, digest: dig })}`, { method: "POST", body: JSON.stringify(evidence) });
+  const send = (name: string, dig: string, evidence: unknown) =>
+    ingest(`/api/v1/images?${new URLSearchParams({ name, digest: dig })}`, { method: "POST", body: JSON.stringify(evidence) });
   const close = () => new Promise<void>((resolve) => server.close(() => resolve()));
   return { db, supply, auth, base, admin, ingest, send, close };
 }
