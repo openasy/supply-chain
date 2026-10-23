@@ -24,22 +24,13 @@ import {
   type Column,
   type ProductId,
   useThemePreference,
+  useAgo,
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth } from "@openasy/auth/react";
 import { Download, Images, KeyRound, LogIn, LogOut, PackageSearch, ScrollText, Settings2, ShieldOff, Trash2, UserRound, Users } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, MfaSetupRequired, Unauthorized, type Exception, type Image, type ImageDetail, type Package, type Policy, type ProductLink, type Summary, type Usage } from "./api.ts";
-
-function ago(iso: string | null | undefined): string {
-  if (!iso) return "never";
-  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86_400)} d ago`;
-}
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+import { useT, type T } from "./i18n.ts";
 
 const PAGES = ["packages", "policy", "exceptions", "setup", "account", "members", "signin", "tokens"] as const;
 type Route = { page: "images" | (typeof PAGES)[number] } | { page: "image"; id: string };
@@ -78,13 +69,16 @@ function Code({ children }: { children: ReactNode }) {
 const short = (digest: string) => digest.replace("sha256:", "").slice(0, 12);
 
 function StateBadge({ image }: { image: Pick<Image, "allowed" | "reasons"> }) {
-  if (!image.allowed) return <StatusBadge tone="danger">Denied</StatusBadge>;
-  return image.reasons.length ? <StatusBadge tone="warning">Allowed by exception</StatusBadge> : <StatusBadge tone="success">Allowed</StatusBadge>;
+  const t = useT();
+  if (!image.allowed) return <StatusBadge tone="danger">{t("stateBadge.denied")}</StatusBadge>;
+  return image.reasons.length ? <StatusBadge tone="warning">{t("stateBadge.allowedByException")}</StatusBadge> : <StatusBadge tone="success">{t("stateBadge.allowed")}</StatusBadge>;
 }
 
-const RULE_LABEL: Record<string, string> = { signature: "Signature", sbom: "SBOM", provenance: "Provenance", licences: "Licences", "unknown-image": "Unknown image", all: "Every rule" };
+const RULE_LABEL = (t: T): Record<string, string> => ({ signature: "Signature", sbom: "SBOM", provenance: "Provenance", licences: "Licences", "unknown-image": t("ruleLabel.unknownImage"), all: t("ruleLabel.everyRule") });
 
 function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
+  const ago = useAgo();
+  const t = useT();
   const [state, setState] = useState<"all" | "allowed" | "denied">("all");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Image[]>();
@@ -104,10 +98,10 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
   const loadMore = () => more && query(more).then((r) => (setRows((x) => [...(x ?? []), ...r.images]), setMore(r.nextCursor)));
 
   const columns: Column<Image>[] = [
-    { id: "state", header: "State", width: "170px", cell: (i) => <StateBadge image={i} /> },
+    { id: "state", header: t("imagesPage.state"), width: "170px", cell: (i) => <StateBadge image={i} /> },
     {
       id: "name",
-      header: "Image",
+      header: t("imagesPage.image"),
       width: "36%",
       sortValue: (i) => i.name,
       cell: (i) => (
@@ -121,67 +115,68 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
     },
     {
       id: "why",
-      header: "What the policy has against it",
+      header: t("imagesPage.whatThePolicyHasAgainst"),
       cell: (i) =>
         i.reasons.length ? (
           <span className="flex flex-wrap gap-1">
             {i.reasons.map((r) => (
               <Badge key={r.message} tone={r.waived ? "neutral" : "danger"}>
-                {RULE_LABEL[r.rule]}
+                {RULE_LABEL(t)[r.rule]}
                 {r.waived ? " (waived)" : ""}
               </Badge>
             ))}
           </span>
         ) : (
-          <span className="text-xs text-fg-muted">Nothing</span>
+          <span className="text-xs text-fg-muted">{t("imagesPage.nothing")}</span>
         ),
     },
-    { id: "evidence", header: "Evidence", cell: (i) => <span className="text-xs whitespace-nowrap">{[i.sbom && "SBOM", i.signature && (i.signature.verified ? "signed" : "unsigned"), i.provenance && `SLSA ${i.provenance.level ?? 0}`].filter(Boolean).join(" · ") || "none"}</span> },
-    { id: "updated", header: "Updated", sortValue: (i) => i.updatedAt, cell: (i) => <span className="text-xs whitespace-nowrap">{ago(i.updatedAt)}</span> },
+    { id: "evidence", header: t("imagesPage.evidence"), cell: (i) => <span className="text-xs whitespace-nowrap">{[i.sbom && "SBOM", i.signature && (i.signature.verified ? "signed" : "unsigned"), i.provenance && `SLSA ${i.provenance.level ?? 0}`].filter(Boolean).join(" · ") || "none"}</span> },
+    { id: "updated", header: t("imagesPage.updated"), sortValue: (i) => i.updatedAt, cell: (i) => <span className="text-xs whitespace-nowrap">{ago(i.updatedAt)}</span> },
   ];
   return (
     <>
-      <PageHeader title="Images" description={summary ? `${plural(summary.images, "image")} · ${summary.packages.toLocaleString()} packages in their SBOMs` : undefined} actions={<SearchInput label="Search name or digest" className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />} />
+      <PageHeader title={t("imagesPage.images")} description={summary ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: summary.images }), value: summary.packages.toLocaleString() }) : undefined} actions={<SearchInput label={t("imagesPage.searchNameOrDigest")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />} />
       {summary && (
         <KpiGrid minWidth={150}>
-          <KpiCard label="Allowed" value={summary.allowed} tone="success" />
-          <KpiCard label="Denied" value={summary.denied} tone={summary.denied ? "danger" : "success"} />
-          <KpiCard label="Allowed by exception" value={summary.allowedByException} tone={summary.allowedByException ? "warning" : "success"} />
-          <KpiCard label="Without SBOM" value={summary.withoutSbom} tone={summary.withoutSbom ? "warning" : "success"} />
+          <KpiCard label={t("imagesPage.allowed")} value={summary.allowed} tone="success" />
+          <KpiCard label={t("imagesPage.denied")} value={summary.denied} tone={summary.denied ? "danger" : "success"} />
+          <KpiCard label={t("imagesPage.allowedByException")} value={summary.allowedByException} tone={summary.allowedByException ? "warning" : "success"} />
+          <KpiCard label={t("imagesPage.withoutSbom")} value={summary.withoutSbom} tone={summary.withoutSbom ? "warning" : "success"} />
         </KpiGrid>
       )}
       <FilterBar onClear={() => (setState("all"), setQ(""))}>
         <SegmentedControl
-          label="State"
+          label={t("imagesPage.state")}
           size="sm"
           value={state}
           onChange={setState}
           options={[
-            { value: "all", label: "All" },
-            { value: "allowed", label: "Allowed" },
-            { value: "denied", label: "Denied" },
+            { value: "all", label: t("imagesPage.all") },
+            { value: "allowed", label: t("imagesPage.allowed") },
+            { value: "denied", label: t("imagesPage.denied") },
           ]}
         />
       </FilterBar>
       <Panel
-        title="Images"
-        description="Judged by the policy of the moment. Ask the same question from a webhook with GET /api/v1/images/check."
+        title={t("imagesPage.images")}
+        description={t("imagesPage.judgedByThePolicyOf")}
         flush
         footer={
           more ? (
             <Button size="sm" onClick={loadMore}>
-              Load more
+              {t("imagesPage.loadMore")}
             </Button>
           ) : undefined
         }
       >
-        <DataTable label="Images" columns={columns} rows={rows ?? []} loading={!rows} getRowId={(i) => i.id} minWidth={900} pageSize={50} empty={<EmptyState title="No images">Nothing matches these filters.</EmptyState>} />
+        <DataTable label={t("imagesPage.images")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(i) => i.id} minWidth={900} pageSize={50} empty={<EmptyState title={t("imagesPage.noImages")}>{t("imagesPage.nothingMatchesTheseFilters")}</EmptyState>} />
       </Panel>
     </>
   );
 }
 
 function ExceptionDialog({ call, image, rule, open, onClose, onDone }: { call: Call; image: Image; rule: string; open: boolean; onClose: () => void; onDone: () => void }) {
+  const t = useT();
   const [reason, setReason] = useState("");
   const [days, setDays] = useState("30");
   const [scope, setScope] = useState("name");
@@ -201,40 +196,40 @@ function ExceptionDialog({ call, image, rule, open, onClose, onDone }: { call: C
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={`Waive ${RULE_LABEL[rule]?.toLowerCase() ?? rule} for ${image.name}`}
-      description="The image is allowed again until the exception ends, and the answer says it is waived. Say why, for the next review."
+      title={t("exceptionDialog.waiveFor", { value: RULE_LABEL(t)[rule]?.toLowerCase() ?? rule, name: image.name })}
+      description={t("exceptionDialog.theImageIsAllowedAgain")}
       onSubmit={submit}
       footer={
         <>
           <Button type="button" onClick={onClose}>
-            Cancel
+            {t("exceptionDialog.cancel")}
           </Button>
           <Button type="submit" variant="primary" disabled={reason.trim().length < 3}>
-            Add exception
+            {t("exceptionDialog.addException")}
           </Button>
         </>
       }
     >
-      <TextField label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} hint="Why it is acceptable, for the next review." error={error} />
+      <TextField label={t("exceptionDialog.reason")} value={reason} onChange={(e) => setReason(e.target.value)} hint={t("exceptionDialog.whyItIsAcceptableFor")} error={error} />
       <div className="grid grid-cols-2 gap-2">
         <SelectField
-          label="Applies to"
+          label={t("exceptionDialog.appliesTo")}
           value={scope}
           onChange={(e) => setScope(e.target.value)}
           options={[
-            { value: "name", label: "Every build of this image" },
-            { value: "digest", label: "This build only" },
+            { value: "name", label: t("exceptionDialog.everyBuildOfThisImage") },
+            { value: "digest", label: t("exceptionDialog.thisBuildOnly") },
           ]}
         />
         <SelectField
-          label="For"
+          label={t("exceptionDialog.for")}
           value={days}
           onChange={(e) => setDays(e.target.value)}
           options={[
-            { value: "7", label: "7 days" },
-            { value: "30", label: "30 days" },
-            { value: "90", label: "90 days" },
-            { value: "365", label: "1 year" },
+            { value: "7", label: t("exceptionDialog.n7Days") },
+            { value: "30", label: t("exceptionDialog.n30Days") },
+            { value: "90", label: t("exceptionDialog.n90Days") },
+            { value: "365", label: t("exceptionDialog.n1Year") },
           ]}
         />
       </div>
@@ -243,6 +238,8 @@ function ExceptionDialog({ call, image, rule, open, onClose, onDone }: { call: C
 }
 
 function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () => void }) {
+  const ago = useAgo();
+  const t = useT();
   const { can } = useAuth();
   const [image, setImage] = useState<ImageDetail | null>();
   const [packages, setPackages] = useState<Package[]>();
@@ -256,21 +253,21 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
 
   if (image === null)
     return (
-      <EmptyState title="Image not found">
-        It may have been deleted. <a href="/images">Back to images</a>.
+      <EmptyState title={t("imagePage.imageNotFound")}>
+        {t("imagePage.itMayHaveBeenDeleted")}{" "}<a href="/images">{t("imagePage.backToImages")}</a>.
       </EmptyState>
     );
 
   const columns: Column<Package>[] = [
-    { id: "name", header: "Package", sortValue: (p) => p.name, cell: (p) => <span className="supply-wrap font-mono text-xs">{p.name}</span> },
-    { id: "version", header: "Version", mono: true, cell: (p) => p.version || "–" },
-    { id: "licence", header: "Licence", cell: (p) => <span className="supply-wrap text-xs">{p.licence ?? "not stated"}</span> },
+    { id: "name", header: t("imagePage.package"), sortValue: (p) => p.name, cell: (p) => <span className="supply-wrap font-mono text-xs">{p.name}</span> },
+    { id: "version", header: t("imagePage.version"), mono: true, cell: (p) => p.version || "–" },
+    { id: "licence", header: t("imagePage.licence"), cell: (p) => <span className="supply-wrap text-xs">{p.licence ?? t("imagePage.notStated")}</span> },
   ];
   const verdictTone = { allowed: "success", denied: "danger", unknown: "neutral" } as const;
   return (
     <>
       <PageHeader
-        title={image?.name ?? "Image"}
+        title={image?.name ?? t("imagePage.image")}
         description={image ? image.digest : undefined}
         actions={
           image && (
@@ -288,19 +285,19 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
         }
       />
       {image && image.reasons.length > 0 && (
-        <Panel title="What the policy has against it" description={image.allowed ? "All of it is waived by an exception that has not ended." : "Fix the evidence in CI, change the policy, or waive a rule with an exception."}>
+        <Panel title={t("imagePage.whatThePolicyHasAgainst")} description={image.allowed ? t("imagePage.allOfItIsWaived") : t("imagePage.fixTheEvidenceInCi")}>
           <ul className="supply-list flex flex-col gap-2 text-sm">
             {image.reasons.map((r) => (
               <li key={r.message} className="flex flex-wrap items-center gap-2">
-                <Badge tone={r.waived ? "neutral" : "danger"}>{RULE_LABEL[r.rule]}</Badge>
+                <Badge tone={r.waived ? "neutral" : "danger"}>{RULE_LABEL(t)[r.rule]}</Badge>
                 <span className="min-w-0 flex-1">{r.message}</span>
                 {r.waived ? (
-                  <StatusBadge tone="neutral">Waived</StatusBadge>
+                  <StatusBadge tone="neutral">{t("imagePage.waived")}</StatusBadge>
                 ) : (
                   can("editor") &&
                   r.rule !== "unknown-image" && (
                     <Button size="sm" icon={<ShieldOff />} onClick={() => setWaiving(r.rule)}>
-                      Waive
+                      {t("imagePage.waive")}
                     </Button>
                   )
                 )}
@@ -324,19 +321,19 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
         </Panel>
       )}
       {image && (
-        <Panel title="Evidence" description="What CI reported. This product records it and does not verify signatures or provenance itself.">
+        <Panel title={t("imagePage.evidence")} description={t("imagePage.whatCiReportedThisProduct")}>
           <dl className="m-0 grid gap-x-4 gap-y-1 text-sm" style={{ gridTemplateColumns: "auto minmax(0, 1fr)" }}>
             <dt className="text-fg-muted">SBOM</dt>
-            <dd className="m-0">{image.sbom ? `${image.sbom.format}, ${plural(image.sbom.packages, "package")}, ${ago(image.sbom.at)}` : "none"}</dd>
-            <dt className="text-fg-muted">Signature</dt>
-            <dd className="supply-wrap m-0">{image.signature ? `${image.signature.verified ? "verified" : "did not verify"}${image.signature.identity ? ` · ${image.signature.identity}` : ""}${image.signature.issuer ? ` · ${image.signature.issuer}` : ""}` : "not reported"}</dd>
-            <dt className="text-fg-muted">Provenance</dt>
-            <dd className="supply-wrap m-0">{image.provenance ? `SLSA level ${image.provenance.level ?? 0}${image.provenance.sourceRepo ? ` · ${image.provenance.sourceRepo}` : ""}${image.provenance.sourceCommit ? `@${image.provenance.sourceCommit.slice(0, 8)}` : ""}${image.provenance.builder ? ` · built by ${image.provenance.builder}` : ""}` : "not reported"}</dd>
+            <dd className="m-0">{image.sbom ? `${image.sbom.format}, ${t("plurals.package", { count: image.sbom.packages })}, ${ago(image.sbom.at)}` : "none"}</dd>
+            <dt className="text-fg-muted">{t("imagePage.signature")}</dt>
+            <dd className="supply-wrap m-0">{image.signature ? `${image.signature.verified ? "verified" : "did not verify"}${image.signature.identity ? ` · ${image.signature.identity}` : ""}${image.signature.issuer ? ` · ${image.signature.issuer}` : ""}` : t("imagePage.notReported")}</dd>
+            <dt className="text-fg-muted">{t("imagePage.provenance")}</dt>
+            <dd className="supply-wrap m-0">{image.provenance ? t("imagePage.slsaLevel", { value: image.provenance.level ?? 0, value2: image.provenance.sourceRepo ? ` · ${image.provenance.sourceRepo}` : "", value3: image.provenance.sourceCommit ? `@${image.provenance.sourceCommit.slice(0, 8)}` : "", value4: image.provenance.builder ? ` · built by ${image.provenance.builder}` : "" }) : t("imagePage.notReported")}</dd>
           </dl>
         </Panel>
       )}
       {image && image.licences.length > 0 && (
-        <Panel title="Licences" description="Every licence in the SBOM, as the policy judges it.">
+        <Panel title={t("imagePage.licences")} description={t("imagePage.everyLicenceInTheSbom")}>
           <ul className="supply-list flex flex-wrap gap-1.5">
             {image.licences.map((l) => (
               <li key={l.licence}>
@@ -348,23 +345,23 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
           </ul>
         </Panel>
       )}
-      <Panel title="Packages" actions={<SearchInput label="Search packages" className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />} flush>
-        <DataTable label="Packages" columns={columns} rows={packages ?? []} loading={!packages} getRowId={(p) => `${p.name}@${p.version}@${p.purl ?? ""}`} minWidth={640} pageSize={50} empty={<EmptyState title="No packages">{image?.sbom ? "Nothing matches." : "No SBOM has been stored for this image."}</EmptyState>} />
+      <Panel title={t("imagePage.packages")} actions={<SearchInput label={t("imagePage.searchPackages")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />} flush>
+        <DataTable label={t("imagePage.packages")} columns={columns} rows={packages ?? []} loading={!packages} getRowId={(p) => `${p.name}@${p.version}@${p.purl ?? ""}`} minWidth={640} pageSize={50} empty={<EmptyState title={t("imagePage.noPackages")}>{image?.sbom ? t("imagePage.nothingMatches") : t("imagePage.noSbomHasBeenStored")}</EmptyState>} />
       </Panel>
       {can("admin") && image && (
-        <Panel title="Delete" description="Removes the image with its SBOM and packages. CI reports it again on its next build.">
+        <Panel title={t("imagePage.delete")} description={t("imagePage.removesTheImageWithIts")}>
           <Button icon={<Trash2 />} onClick={() => setRemoving(true)}>
-            Delete image
+            {t("imagePage.deleteImage")}
           </Button>
           <Dialog
             open={removing}
             onOpenChange={setRemoving}
-            title={`Delete ${image.name}?`}
-            description="An admission check for this digest is denied until CI reports it again."
+            title={t("imagePage.delete2", { name: image.name })}
+            description={t("imagePage.anAdmissionCheckForThis")}
             footer={
               <>
                 <Button type="button" onClick={() => setRemoving(false)}>
-                  Cancel
+                  {t("imagePage.cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -376,7 +373,7 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
                     })
                   }
                 >
-                  Delete
+                  {t("imagePage.delete")}
                 </Button>
               </>
             }
@@ -390,6 +387,7 @@ function ImagePage({ call, id, reload }: { call: Call; id: string; reload: () =>
 }
 
 function PackagesPage({ call }: { call: Call }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
   const [rows, setRows] = useState<Usage[]>();
@@ -405,31 +403,31 @@ function PackagesPage({ call }: { call: Call }) {
   const columns: Column<Usage>[] = [
     {
       id: "image",
-      header: "Image",
+      header: t("packagesPage.image"),
       cell: (u) => (
         <a href={`/images/${u.image.id}`} className="supply-wrap">
           {u.image.name} <span className="font-mono text-xs text-fg-muted">{short(u.image.digest)}</span>
         </a>
       ),
     },
-    { id: "version", header: "Version", mono: true, cell: (u) => u.version || "–" },
-    { id: "licence", header: "Licence", cell: (u) => <span className="text-xs">{u.licence ?? "not stated"}</span> },
+    { id: "version", header: t("packagesPage.version"), mono: true, cell: (u) => u.version || "–" },
+    { id: "licence", header: t("packagesPage.licence"), cell: (u) => <span className="text-xs">{u.licence ?? t("packagesPage.notStated")}</span> },
   ];
   return (
     <>
-      <PageHeader title="Where used" description="Which images contain a package, in every stored SBOM. Use it the day a library turns out to be vulnerable." />
+      <PageHeader title={t("packagesPage.whereUsed")} description={t("packagesPage.whichImagesContainAPackage")} />
       <Panel>
         <form onSubmit={search} className="grid items-end gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto]">
-          <TextField label="Package" value={name} onChange={(e) => setName(e.target.value)} hint="The name, exactly, such as openssl." />
-          <TextField label="Version" value={version} onChange={(e) => setVersion(e.target.value)} hint="Optional, exactly." />
+          <TextField label={t("packagesPage.package")} value={name} onChange={(e) => setName(e.target.value)} hint={t("packagesPage.theNameExactlySuchAs")} />
+          <TextField label={t("packagesPage.version")} value={version} onChange={(e) => setVersion(e.target.value)} hint={t("packagesPage.optionalExactly")} />
           <Button type="submit" variant="primary" disabled={!name.trim()}>
-            Search
+            {t("packagesPage.search")}
           </Button>
         </form>
       </Panel>
       {searched && (
-        <Panel title="Images" flush>
-          <DataTable label="Images with the package" columns={columns} rows={rows ?? []} loading={!rows} getRowId={(u) => `${u.image.id}@${u.version}`} minWidth={640} empty={<EmptyState title="No image contains it">Nothing matches this name and version.</EmptyState>} />
+        <Panel title={t("packagesPage.images")} flush>
+          <DataTable label={t("packagesPage.imagesWithThePackage")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(u) => `${u.image.id}@${u.version}`} minWidth={640} empty={<EmptyState title={t("packagesPage.noImageContainsIt")}>{t("packagesPage.nothingMatchesThisNameAnd")}</EmptyState>} />
         </Panel>
       )}
     </>
@@ -439,6 +437,7 @@ function PackagesPage({ call }: { call: Call }) {
 const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
 
 function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
+  const t = useT();
   const { can } = useAuth();
   const [saved, setSaved] = useState<Policy>();
   const [p, setP] = useState<Policy>();
@@ -473,30 +472,30 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
   );
   return (
     <>
-      <PageHeader title="Policy" description="What every image must show before it may run. It applies to all images at once, and the answer to a webhook follows it the moment it changes." />
+      <PageHeader title={t("policyPage.policy")} description={t("policyPage.whatEveryImageMustShow")} />
       {p && (
         <>
-          <Panel title="Signature" description="CI runs cosign verify and reports the result; this product records it.">
+          <Panel title={t("policyPage.signature")} description={t("policyPage.ciRunsCosignVerifyAnd")}>
             <div className="flex flex-col gap-3">
-              <Switch checked={p.requireSignature} onCheckedChange={(v) => (setP({ ...p, requireSignature: v }), setDone(false))} label="Require a verified signature" disabled={readOnly} />
+              <Switch checked={p.requireSignature} onCheckedChange={(v) => (setP({ ...p, requireSignature: v }), setDone(false))} label={t("policyPage.requireAVerifiedSignature")} disabled={readOnly} />
               {area("Allowed signer identities", "One regular expression per line. The signer's identity must match one. Empty: any identity.", identities, setIdentities)}
               {area("Allowed issuers", "One exact issuer per line, such as https://token.actions.githubusercontent.com. Empty: any issuer.", issuers, setIssuers)}
             </div>
           </Panel>
-          <Panel title="SBOM and provenance">
+          <Panel title={t("policyPage.sbomAndProvenance")}>
             <div className="flex flex-col gap-3">
-              <Switch checked={p.requireSbom} onCheckedChange={(v) => (setP({ ...p, requireSbom: v }), setDone(false))} label="Require an SBOM" disabled={readOnly} />
-              <Switch checked={p.requireProvenance} onCheckedChange={(v) => (setP({ ...p, requireProvenance: v }), setDone(false))} label="Require provenance" disabled={readOnly} />
+              <Switch checked={p.requireSbom} onCheckedChange={(v) => (setP({ ...p, requireSbom: v }), setDone(false))} label={t("policyPage.requireAnSbom")} disabled={readOnly} />
+              <Switch checked={p.requireProvenance} onCheckedChange={(v) => (setP({ ...p, requireProvenance: v }), setDone(false))} label={t("policyPage.requireProvenance")} disabled={readOnly} />
               <SelectField
-                label="Lowest SLSA build level"
+                label={t("policyPage.lowestSlsaBuildLevel")}
                 value={String(p.minProvenanceLevel)}
                 onChange={(e) => (setP({ ...p, minProvenanceLevel: Number(e.target.value) }), setDone(false))}
                 disabled={readOnly}
-                options={[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 0 ? "Any" : `Level ${n}` }))}
+                options={[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 0 ? t("policyPage.any") : t("policyPage.level", { n }) }))}
               />
             </div>
           </Panel>
-          <Panel title="Licences" description="SPDX ids. An OR expression passes when one alternative does; an AND needs every part. With an allow list, a package whose licence nobody named is denied.">
+          <Panel title={t("policyPage.licences")} description={t("policyPage.spdxIdsAnOrExpression")}>
             <div className="grid gap-3 sm:grid-cols-2">
               {area("Allowed", "One id per line. Empty: any licence that is not denied.", allow, setAllow)}
               {area("Denied", "One id per line, such as AGPL-3.0-only.", deny, setDeny)}
@@ -505,13 +504,13 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
           {can("admin") ? (
             <div className="flex items-center gap-3">
               <Button variant="primary" onClick={() => void save()} disabled={!saved}>
-                Save policy
+                {t("policyPage.savePolicy")}
               </Button>
-              {done && <StatusBadge tone="success">Saved</StatusBadge>}
+              {done && <StatusBadge tone="success">{t("policyPage.saved")}</StatusBadge>}
               {error && <span className="text-xs text-danger">{error}</span>}
             </div>
           ) : (
-            <p className="m-0 text-sm text-fg-muted">Only admins change the policy.</p>
+            <p className="m-0 text-sm text-fg-muted">{t("policyPage.onlyAdminsChangeThePolicy")}</p>
           )}
         </>
       )}
@@ -520,25 +519,26 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
 }
 
 function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
+  const t = useT();
   const { can } = useAuth();
   const [rows, setRows] = useState<Exception[]>();
   const load = useCallback(() => void call<{ exceptions: Exception[] }>("/api/v1/exceptions").then((r) => setRows(r.exceptions), () => setRows([])), [call]);
   useEffect(load, [load]);
   const columns: Column<Exception>[] = [
-    { id: "name", header: "Image", cell: (e) => <span className="supply-wrap">{e.name}{e.digest ? <span className="font-mono text-xs text-fg-muted"> {short(e.digest)}</span> : ""}</span> },
-    { id: "rule", header: "Waives", cell: (e) => <Badge>{RULE_LABEL[e.rule]}</Badge> },
-    { id: "reason", header: "Reason", width: "34%", cell: (e) => <span className="text-xs">{e.reason}</span> },
-    { id: "by", header: "By", cell: (e) => <span className="text-xs">{e.by ?? "–"}</span> },
-    { id: "expires", header: "Ends", sortValue: (e) => e.expiresAt, cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.expiresAt).toLocaleDateString()}</span> },
-    { id: "state", header: "State", cell: (e) => (e.active ? <StatusBadge tone="success">Active</StatusBadge> : <StatusBadge tone="neutral">Ended</StatusBadge>) },
+    { id: "name", header: t("exceptionsPage.image"), cell: (e) => <span className="supply-wrap">{e.name}{e.digest ? <span className="font-mono text-xs text-fg-muted"> {short(e.digest)}</span> : ""}</span> },
+    { id: "rule", header: t("exceptionsPage.waives"), cell: (e) => <Badge>{RULE_LABEL(t)[e.rule]}</Badge> },
+    { id: "reason", header: t("exceptionsPage.reason"), width: "34%", cell: (e) => <span className="text-xs">{e.reason}</span> },
+    { id: "by", header: t("exceptionsPage.by"), cell: (e) => <span className="text-xs">{e.by ?? "–"}</span> },
+    { id: "expires", header: t("exceptionsPage.ends"), sortValue: (e) => e.expiresAt, cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.expiresAt).toLocaleDateString()}</span> },
+    { id: "state", header: t("exceptionsPage.state"), cell: (e) => (e.active ? <StatusBadge tone="success">{t("exceptionsPage.active")}</StatusBadge> : <StatusBadge tone="neutral">{t("exceptionsPage.ended")}</StatusBadge>) },
     {
       id: "remove",
-      header: <span className="sr-only">Remove</span>,
-      label: "Remove",
+      header: <span className="sr-only">{t("exceptionsPage.remove")}</span>,
+      label: t("exceptionsPage.remove"),
       align: "right",
       cell: (e) =>
         can("editor") && (
-          <IconButton label={`Remove the exception for ${e.name}`} size="sm" onClick={() => void call(`/api/v1/exceptions/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()))}>
+          <IconButton label={t("exceptionsPage.removeTheExceptionFor", { name: e.name })} size="sm" onClick={() => void call(`/api/v1/exceptions/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()))}>
             <Trash2 />
           </IconButton>
         ),
@@ -546,9 +546,9 @@ function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
   ];
   return (
     <>
-      <PageHeader title="Exceptions" description="A rule waived for an image, with a reason and an end. Add one from an image's page." />
+      <PageHeader title={t("exceptionsPage.exceptions")} description={t("exceptionsPage.aRuleWaivedForAn")} />
       <Panel flush>
-        <DataTable label="Exceptions" columns={columns} rows={rows ?? []} loading={!rows} getRowId={(e) => e.id} minWidth={900} empty={<EmptyState title="No exceptions">Every rule applies to every image.</EmptyState>} />
+        <DataTable label={t("exceptionsPage.exceptions")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(e) => e.id} minWidth={900} empty={<EmptyState title={t("exceptionsPage.noExceptions")}>{t("exceptionsPage.everyRuleAppliesToEvery")}</EmptyState>} />
       </Panel>
     </>
   );
@@ -557,11 +557,12 @@ function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
 // ---------------------------------------------------------------- Setup
 
 function SetupPage() {
+  const t = useT();
   const origin = window.location.origin;
   return (
     <>
-      <PageHeader title="Setup" description="CI reports what it knows about each image it builds. The policy decides which may run, and a webhook or pipeline asks." />
-      <Panel title="Report an image" description="Use SUPPLY_CHAIN_INGEST_TOKEN, set where supply-chain runs, or an API token with the editor role from API tokens.">
+      <PageHeader title={t("setupPage.setup")} description={t("setupPage.ciReportsWhatItKnows")} />
+      <Panel title={t("setupPage.reportAnImage")} description={t("setupPage.useSupplyChainIngestToken")}>
         <Code>{`digest=$(crane digest ghcr.io/acme/app:1.4.2)
 syft ghcr.io/acme/app@$digest -o cyclonedx-json > sbom.json
 cosign verify ghcr.io/acme/app@$digest \\
@@ -571,15 +572,15 @@ jq -n --slurpfile sbom sbom.json --argjson verified $verified '{sbom: $sbom[0], 
   curl -sf -X POST -H "Authorization: Bearer $SUPPLY_CHAIN_INGEST_TOKEN" -H 'content-type: application/json' --data-binary @- \\
   "${origin}/api/v1/images?name=ghcr.io/acme/app&digest=$digest"`}</Code>
       </Panel>
-      <Panel title="Ask whether it may run" description="From an admission webhook or a pipeline. An image nobody reported on is denied.">
+      <Panel title={t("setupPage.askWhetherItMayRun")} description={t("setupPage.fromAnAdmissionWebhookOr")}>
         <Code>{`curl -sf -H "Authorization: Bearer $SUPPLY_CHAIN_INGEST_TOKEN" \\
   "${origin}/api/v1/images/check?name=ghcr.io/acme/app&digest=$digest" | jq -e .allowed`}</Code>
       </Panel>
-      <Panel title="What this product does and does not do">
+      <Panel title={t("setupPage.whatThisProductDoesAnd")}>
         <ul className="supply-list flex flex-col gap-1 text-sm text-fg-muted">
-          <li>It records the SBOM, the signature result and the provenance summary that CI sends, and judges them against the policy.</li>
-          <li>It does not verify signatures or provenance itself yet. Whoever holds the ingest token is trusted like the pipeline that runs cosign.</li>
-          <li>It builds and signs nothing.</li>
+          <li>{t("setupPage.itRecordsTheSbomThe")}</li>
+          <li>{t("setupPage.itDoesNotVerifySignatures")}</li>
+          <li>{t("setupPage.itBuildsAndSignsNothing")}</li>
         </ul>
       </Panel>
     </>
@@ -588,9 +589,10 @@ jq -n --slurpfile sbom sbom.json --argjson verified $verified '{sbom: $sbom[0], 
 
 /** The first screen, until the first image arrives. The summary is polled, so it gives way by itself. */
 function WelcomePage() {
+  const t = useT();
   return (
     <>
-      <PageHeader title="Get started" description="Report an image from CI, then ask whether it may run." actions={<StatusBadge tone="info">Waiting for the first image</StatusBadge>} />
+      <PageHeader title={t("welcomePage.getStarted")} description={t("welcomePage.reportAnImageFromCi")} actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstImage")}</StatusBadge>} />
       <SetupPage />
     </>
   );
@@ -600,8 +602,9 @@ function WelcomePage() {
 
 /** Account, Members, Sign-in and API tokens: the screens come from @openasy/auth. */
 function SettingsPage({ page }: { page: "account" | "members" | "signin" | "tokens" }) {
+  const t = useT();
   const { signOut, can } = useAuth();
-  if (page !== "account" && !can("admin")) return <EmptyState title="Admins only">Ask an admin of this supply-chain for access.</EmptyState>;
+  if (page !== "account" && !can("admin")) return <EmptyState title={t("settingsPage.adminsOnly")}>{t("settingsPage.askAnAdminOfThis")}</EmptyState>;
   const titles = {
     account: ["Account", "Your profile, password, two-step verification and where you are signed in."],
     members: ["Members", "Who can sign in to this supply-chain, and with which role. Viewers see everything; editors also add exceptions; admins also change the policy, delete images, and manage members and tokens."],
@@ -616,7 +619,7 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
         actions={
           page === "account" && (
             <Button icon={<LogOut />} onClick={() => void signOut()}>
-              Sign out
+              {t("settingsPage.signOut")}
             </Button>
           )
         }
@@ -627,6 +630,7 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
 }
 
 function Product() {
+  const msg = useT();
   const [theme, setTheme] = useThemePreference();
   const { me, can } = useAuth();
   const route = parseRoute(usePath());
@@ -650,21 +654,21 @@ function Product() {
   }, [reload]);
 
   const nav = [
-    { id: "images", label: "Images", icon: Images, count: summary?.images },
-    { id: "packages", label: "Where used", icon: PackageSearch },
-    { id: "policy", label: "Policy", icon: ScrollText },
-    { id: "exceptions", label: "Exceptions", icon: ShieldOff, count: summary?.activeExceptions },
+    { id: "images", label: msg("product.images"), icon: Images, count: summary?.images },
+    { id: "packages", label: msg("product.whereUsed"), icon: PackageSearch },
+    { id: "policy", label: msg("product.policy"), icon: ScrollText },
+    { id: "exceptions", label: msg("product.exceptions"), icon: ShieldOff, count: summary?.activeExceptions },
   ];
   const footerNav = [
-    { id: "setup", label: "Setup", icon: Settings2 },
+    { id: "setup", label: msg("product.setup"), icon: Settings2 },
     ...(can("admin")
       ? [
-          { id: "members", label: "Members", icon: Users },
-          { id: "signin", label: "Sign-in", icon: LogIn },
-          { id: "tokens", label: "API tokens", icon: KeyRound },
+          { id: "members", label: msg("product.members"), icon: Users },
+          { id: "signin", label: msg("product.signIn"), icon: LogIn },
+          { id: "tokens", label: msg("product.apiTokens"), icon: KeyRound },
         ]
       : []),
-    { id: "account", label: "Account", icon: UserRound },
+    { id: "account", label: msg("product.account"), icon: UserRound },
   ];
   const active = route.page === "image" ? "images" : route.page;
   const roleName = me.user.role.charAt(0).toUpperCase() + me.user.role.slice(1);
