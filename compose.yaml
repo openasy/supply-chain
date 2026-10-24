@@ -6,7 +6,7 @@
 #   docker compose logs supply-chain | grep 'no owner yet'   # the one-time link that creates the owner account
 services:
   supply-chain:
-    image: ghcr.io/openasy/supply-chain:0.4.0
+    image: ghcr.io/openasy/supply-chain:0.5.0
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
