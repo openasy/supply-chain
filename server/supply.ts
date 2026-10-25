@@ -469,15 +469,35 @@ export function createSupply(db: DatabaseSync) {
       const ids = db.prepare("SELECT id FROM images").all() as Array<{ id: string }>;
       let allowed = 0;
       let waived = 0;
+      const deniedBy = Object.fromEntries(RULES.map((r) => [r, 0])) as Record<Rule, number>;
       for (const { id } of ids) {
         const e = evaluate(rowOf(id));
         if (e.allowed) allowed++;
         if (e.allowed && e.reasons.length) waived++;
+        for (const rule of new Set(e.reasons.filter((x) => !x.waived).map((x) => x.rule))) if (rule !== "unknown-image") deniedBy[rule]++;
       }
+      // The licences most packages carry, over every image, judged by the policy.
+      const p = policy();
+      const topLicences = (
+        db.prepare("SELECT licence, COUNT(*) AS n FROM packages GROUP BY licence ORDER BY n DESC, licence LIMIT 8").all() as Array<{
+          licence: string | null;
+          n: number;
+        }>
+      ).map((r) => ({ licence: r.licence ?? UNKNOWN, packages: r.n, verdict: judge(r.licence, { allow: p.licenceAllow, deny: p.licenceDeny }) as Verdict }));
       const withoutSbom = (db.prepare("SELECT COUNT(*) AS n FROM images WHERE sbom_at IS NULL").get() as { n: number }).n;
       const exceptions = (db.prepare("SELECT COUNT(*) AS n FROM exceptions WHERE expires_at > ?").get(now()) as { n: number }).n;
       const packages = (db.prepare("SELECT COUNT(*) AS n FROM packages").get() as { n: number }).n;
-      return { images: ids.length, allowed, denied: ids.length - allowed, allowedByException: waived, withoutSbom, activeExceptions: exceptions, packages };
+      return {
+        images: ids.length,
+        allowed,
+        denied: ids.length - allowed,
+        allowedByException: waived,
+        withoutSbom,
+        activeExceptions: exceptions,
+        packages,
+        deniedBy,
+        licences: topLicences,
+      };
     },
   };
 }

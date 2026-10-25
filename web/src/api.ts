@@ -77,6 +77,10 @@ export interface Summary {
   withoutSbom: number;
   activeExceptions: number;
   packages: number;
+  /** Images each rule denies, without what an exception waives. */
+  deniedBy: Record<Rule, number>;
+  /** The licences most packages carry over every image, most first. */
+  licences: ImageDetail["licences"];
 }
 
 export class Unauthorized extends Error {}

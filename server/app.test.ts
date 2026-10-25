@@ -210,10 +210,16 @@ describe("exceptions", () => {
   it("waives one rule for one image name, with a reason and an end", async () => {
     await putPolicy({ licenceDeny: ["GPL-3.0-or-later"] });
     expect((await check(APP, digest(1))).allowed).toBe(false);
+    const before = await json(await app.admin("/api/v1/summary"));
+    expect(before.deniedBy.licences).toBeGreaterThanOrEqual(1);
+    expect(before.licences).toContainEqual(expect.objectContaining({ licence: "GPL-3.0-or-later", verdict: "denied" }));
     const made = await json(await add({ name: APP, rule: "licences", reason: "bash is only used in the build stage", expiresAt: inDays(30) }));
     expect(made).toMatchObject({ name: APP, digest: null, rule: "licences", by: "admin token", active: true });
     expect(await check(APP, digest(1))).toMatchObject({ allowed: true, reasons: [{ rule: "licences", waived: true }] });
-    expect((await json(await app.admin("/api/v1/summary"))).allowedByException).toBe(1);
+    const after = await json(await app.admin("/api/v1/summary"));
+    expect(after.allowedByException).toBe(1);
+    // What an exception waives no longer counts as a denial.
+    expect(after.deniedBy.licences).toBeLessThan(before.deniedBy.licences);
     expect((await json(await app.admin("/api/v1/images?state=allowed&q=acme/app"))).images.length).toBeGreaterThan(1);
     // Another rule is still enforced.
     await app.send(APP, digest(15), { sbom, signature: { verified: false } });

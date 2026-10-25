@@ -17,6 +17,11 @@
     "allowed": "Allowed",
     "denied": "Denied",
     "allowedByException": "Allowed by exception",
+    "whyImagesAreDenied": "Why images are denied",
+    "imagesEachRuleDenies": "Images each rule denies, without what an exception waives. One image can count for two rules.",
+    "noImageIsDenied": "No image is denied.",
+    "licences": "Licences",
+    "theLicencesMostPackagesCarry": "The licences most packages carry, over every image. Red: the policy denies it; amber: unknown.",
     "withoutSbom": "Without SBOM",
     "all": "All",
     "judgedByThePolicyOf": "Judged by the policy of the moment. Ask the same question from a webhook with GET /api/v1/images/check.",
@@ -106,7 +111,15 @@
     "spdxIdsAnOrExpression": "SPDX ids. An OR expression passes when one alternative does; an AND needs every part. With an allow list, a package whose licence nobody named is denied.",
     "savePolicy": "Save policy",
     "saved": "Saved",
-    "onlyAdminsChangeThePolicy": "Only admins change the policy."
+    "onlyAdminsChangeThePolicy": "Only admins change the policy.",
+    "allowedSignerIdentities": "Allowed signer identities",
+    "oneRegularExpressionPerLine": "One regular expression per line. The signer's identity must match one. Empty: any identity.",
+    "allowedIssuers": "Allowed issuers",
+    "oneExactIssuerPerLine": "One exact issuer per line, such as https://token.actions.githubusercontent.com. Empty: any issuer.",
+    "allowed": "Allowed",
+    "oneIdPerLineAllow": "One id per line. Empty: any licence that is not denied.",
+    "denied": "Denied",
+    "oneIdPerLineDeny": "One id per line, such as AGPL-3.0-only."
   },
   "exceptionsPage": {
     "image": "Image",
@@ -166,5 +179,10 @@
     "image_other": "{{count}} images",
     "package_one": "{{count}} package",
     "package_other": "{{count}} packages"
+  },
+  "search": {
+    "image": "Image",
+    "allowed": "Allowed",
+    "denied": "Denied"
   }
 }

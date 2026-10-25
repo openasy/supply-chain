@@ -1,6 +1,7 @@
 import {
   AppShell,
   Badge,
+  BarList,
   BrandProvider,
   Button,
   DataTable,
@@ -20,16 +21,19 @@ import {
   StatusBadge,
   Switch,
   TextField,
+  TONE_COLORS,
   usePath,
   type Column,
   type ProductId,
   useThemePreference,
   useAgo,
+  toLocale,
+  useLocalePreference,
 } from "@openasy/ui";
-import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth, useInstallBrand } from "@openasy/auth/react";
+import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { Download, Images, KeyRound, LogIn, LogOut, PackageSearch, ScrollText, Settings2, ShieldOff, Trash2, UserRound, Users } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Download, Images, KeyRound, LogIn, LogOut, PackageSearch, ScrollText, ShieldOff, Trash2, UserRound, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
   MfaSetupRequired,
@@ -37,6 +41,7 @@ import {
   type Exception,
   type Image,
   type ImageDetail,
+  type Rule,
   type Package,
   type Policy,
   type ProductLink,
@@ -44,6 +49,7 @@ import {
   type Usage,
 } from "./api.ts";
 import { useT, type T } from "./i18n.ts";
+import { search } from "./search.ts";
 
 const PAGES = ["packages", "policy", "exceptions", "setup", "account", "members", "signin", "tokens", "about"] as const;
 type Route = { page: "images" | (typeof PAGES)[number] } | { page: "image"; id: string };
@@ -196,6 +202,34 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
           <KpiCard label={t("imagesPage.allowedByException")} value={summary.allowedByException} tone={summary.allowedByException ? "warning" : "success"} />
           <KpiCard label={t("imagesPage.withoutSbom")} value={summary.withoutSbom} tone={summary.withoutSbom ? "warning" : "success"} />
         </KpiGrid>
+      )}
+      {summary && summary.images > 0 && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Panel title={t("imagesPage.whyImagesAreDenied")} description={t("imagesPage.imagesEachRuleDenies")}>
+            {summary.denied ? (
+              <BarList
+                label={t("imagesPage.whyImagesAreDenied")}
+                items={(Object.entries(summary.deniedBy) as Array<[Rule, number]>)
+                  .filter(([, n]) => n > 0)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([rule, n]) => ({ id: rule, label: RULE_LABEL(t)[rule], value: n, color: TONE_COLORS.danger }))}
+              />
+            ) : (
+              <p className="m-0 text-sm text-fg-muted">{t("imagesPage.noImageIsDenied")}</p>
+            )}
+          </Panel>
+          <Panel title={t("imagesPage.licences")} description={t("imagesPage.theLicencesMostPackagesCarry")}>
+            <BarList
+              label={t("imagesPage.licences")}
+              items={summary.licences.map((l) => ({
+                id: l.licence,
+                label: l.licence,
+                value: l.packages,
+                color: l.verdict === "denied" ? TONE_COLORS.danger : l.verdict === "unknown" ? TONE_COLORS.warning : undefined,
+              }))}
+            />
+          </Panel>
+        </div>
       )}
       <FilterBar onClear={() => (setState("all"), setQ(""))}>
         <SegmentedControl
@@ -642,18 +676,8 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
                 label={t("policyPage.requireAVerifiedSignature")}
                 disabled={readOnly}
               />
-              {area(
-                "Allowed signer identities",
-                "One regular expression per line. The signer's identity must match one. Empty: any identity.",
-                identities,
-                setIdentities,
-              )}
-              {area(
-                "Allowed issuers",
-                "One exact issuer per line, such as https://token.actions.githubusercontent.com. Empty: any issuer.",
-                issuers,
-                setIssuers,
-              )}
+              {area(t("policyPage.allowedSignerIdentities"), t("policyPage.oneRegularExpressionPerLine"), identities, setIdentities)}
+              {area(t("policyPage.allowedIssuers"), t("policyPage.oneExactIssuerPerLine"), issuers, setIssuers)}
             </div>
           </Panel>
           <Panel title={t("policyPage.sbomAndProvenance")}>
@@ -681,8 +705,8 @@ function PolicyPage({ call, reload }: { call: Call; reload: () => void }) {
           </Panel>
           <Panel title={t("policyPage.licences")} description={t("policyPage.spdxIdsAnOrExpression")}>
             <div className="grid gap-3 sm:grid-cols-2">
-              {area("Allowed", "One id per line. Empty: any licence that is not denied.", allow, setAllow)}
-              {area("Denied", "One id per line, such as AGPL-3.0-only.", deny, setDeny)}
+              {area(t("policyPage.allowed"), t("policyPage.oneIdPerLineAllow"), allow, setAllow)}
+              {area(t("policyPage.denied"), t("policyPage.oneIdPerLineDeny"), deny, setDeny)}
             </div>
           </Panel>
           {can("admin") ? (
@@ -868,11 +892,14 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
 function Product() {
   const msg = useT();
   const [theme, setTheme] = useThemePreference();
+  const [, setLocale] = useLocalePreference();
   const { me, can } = useAuth();
+  const account = useAccountMenu();
   const route = parseRoute(usePath());
   const [summary, setSummary] = useState<Summary>();
   const [products, setProducts] = useState<Array<ProductLink & { id: ProductId }>>([]);
   const call = useApi();
+  const onSearch = useMemo(() => search(call, msg), [call, msg]);
 
   // The install's other products (OPENASY_PRODUCTS), for the switcher; ids this UI does not know are left out.
   useEffect(() => {
@@ -899,7 +926,6 @@ function Product() {
     { id: "exceptions", label: msg("product.exceptions"), icon: ShieldOff, count: summary?.activeExceptions },
   ];
   const footerNav = [
-    { id: "setup", label: msg("product.setup"), icon: Settings2 },
     ...(can("admin")
       ? [
           { id: "members", label: msg("product.members"), icon: Users },
@@ -915,6 +941,7 @@ function Product() {
   return (
     <AppShell
       product="supply-chain"
+      onSearch={onSearch}
       about={colophon}
       nav={nav}
       activeNav={active}
@@ -924,10 +951,12 @@ function Product() {
         const to = products.find((p) => p.id === id);
         if (to) window.location.assign(to.url);
       }}
-      footerNav={footerNav}
-      user={{ name: me.user.name, role: roleName }}
+      footerNav={account.settings(footerNav)}
+      setup
+      user={{ name: me.user.name, role: roleName, ...account.user }}
       theme={theme}
       onThemeChange={setTheme}
+      onLanguageChange={(code) => setLocale(toLocale(code))}
     >
       {route.page === "images" && summary && summary.images === 0 ? (
         <WelcomePage />
@@ -953,9 +982,10 @@ function Product() {
 export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
+  const [locale] = useLocalePreference();
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
-    <BrandProvider theme={theme} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
+    <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
       <AuthGate product="OpenAsy Supply Chain">
         <Product />
       </AuthGate>

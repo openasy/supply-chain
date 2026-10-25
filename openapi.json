@@ -1935,7 +1935,9 @@
           "allowedByException",
           "withoutSbom",
           "activeExceptions",
-          "packages"
+          "packages",
+          "deniedBy",
+          "licences"
         ],
         "additionalProperties": false,
         "properties": {
@@ -1959,6 +1961,61 @@
           },
           "packages": {
             "type": "integer"
+          },
+          "deniedBy": {
+            "type": "object",
+            "description": "Images each rule denies, without what an exception waives. An image denied by two rules counts for both.",
+            "required": [
+              "signature",
+              "sbom",
+              "provenance",
+              "licences"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "signature": {
+                "type": "integer"
+              },
+              "sbom": {
+                "type": "integer"
+              },
+              "provenance": {
+                "type": "integer"
+              },
+              "licences": {
+                "type": "integer"
+              }
+            }
+          },
+          "licences": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "The licences most packages carry over every image, most first, judged by the policy.",
+            "items": {
+              "type": "object",
+              "required": [
+                "licence",
+                "packages",
+                "verdict"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "licence": {
+                  "type": "string"
+                },
+                "packages": {
+                  "type": "integer"
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "allowed",
+                    "denied",
+                    "unknown"
+                  ]
+                }
+              }
+            }
           }
         }
       }
