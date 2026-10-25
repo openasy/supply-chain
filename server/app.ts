@@ -186,6 +186,7 @@ export function createApp({ db, supply, version, auth, adminToken, ingestToken, 
     { method: "GET", path: "/api/v1/version", auth: "none", handle: () => ({ product: "supply-chain", version }) },
     { method: "GET", path: "/api/v1/products", auth: "viewer", handle: () => ({ products }) },
     { method: "GET", path: "/api/v1/summary", auth: "viewer", handle: () => supply.summary() },
+    { method: "GET", path: "/api/v1/overview", auth: "viewer", handle: () => supply.overview() },
 
     // Evidence in, from CI: an SBOM, the result of its own signature check, a provenance summary.
     {

@@ -1,4 +1,22 @@
 {
+  "overviewPage": {
+    "overview": "Genel bakış",
+    "packages": "Paketler",
+    "newImages": "Yeni imajlar",
+    "newImagesDetail": "Son 12 haftanın her birinde ilk kez raporlanan imajlar.",
+    "verdicts": "Kararlar",
+    "imagesCaption": "imaj",
+    "evidence": "Kanıtlar",
+    "evidenceDetail": "CI'ın her kanıt türünü kaç imaj için raporladığı.",
+    "signed": "İmzalı",
+    "withSbom": "SBOM",
+    "withProvenance": "Köken",
+    "ofImages": "{{total}} imajdan {{n}}",
+    "recent": "Son raporlananlar",
+    "recentDetail": "En yeni imajlar ve politikanın onlar hakkındaki kararı.",
+    "topPackages": "En çok imajda olan paketler",
+    "topPackagesDetail": "İçeren tüm imajları görmek için birini açın."
+  },
   "stateBadge": {
     "denied": "Reddedildi",
     "allowedByException": "İstisnayla izin verildi",
@@ -160,6 +178,7 @@
     "signOut": "Çıkış yap"
   },
   "product": {
+    "overview": "Genel bakış",
     "images": "İmajlar",
     "whereUsed": "Kullanıldığı yerler",
     "policy": "Politika",

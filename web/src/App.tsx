@@ -23,16 +23,37 @@ import {
   TextField,
   TONE_COLORS,
   usePath,
-  type Column,
-  type ProductId,
   useThemePreference,
   useAgo,
   toLocale,
   useLocalePreference,
+  DonutChart,
+  Gauge,
+  OverviewGrid,
+  StackedBarChart,
+  type Column,
+  type ProductId,
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { Download, Images, KeyRound, LogIn, LogOut, PackageSearch, ScrollText, ShieldOff, Trash2, UserRound, Users } from "lucide-react";
+import {
+  Ban,
+  CircleCheck,
+  Download,
+  FileX,
+  Images,
+  KeyRound,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Package as PackageIcon,
+  PackageSearch,
+  ScrollText,
+  ShieldOff,
+  Trash2,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
@@ -47,19 +68,21 @@ import {
   type ProductLink,
   type Summary,
   type Usage,
+  type Overview,
 } from "./api.ts";
 import { useT, type T } from "./i18n.ts";
 import { search } from "./search.ts";
 
 const PAGES = ["packages", "policy", "exceptions", "setup", "account", "members", "signin", "tokens", "about"] as const;
-type Route = { page: "images" | (typeof PAGES)[number] } | { page: "image"; id: string };
+type Route = { page: "overview" | "images" | (typeof PAGES)[number] } | { page: "image"; id: string };
 /** The first path segments that are pages of this UI, for followLinks. */
-export const PATHS = ["images", ...PAGES];
+export const PATHS = ["overview", "images", ...PAGES];
 function parseRoute(path: string): Route {
   const [page, id] = path.replace(/^\//, "").split("/");
   if (page === "images" && id) return { page: "image", id: decodeURIComponent(id) };
   if ((PAGES as readonly string[]).includes(page ?? "")) return { page: page as (typeof PAGES)[number] };
-  return { page: "images" };
+  if (page === "images") return { page: "images" };
+  return { page: "overview" };
 }
 
 /** Data loading with the session; when it ends, the sign-in screen comes back. */
@@ -104,6 +127,161 @@ const RULE_LABEL = (t: T): Record<string, string> => ({
   "unknown-image": t("ruleLabel.unknownImage"),
   all: t("ruleLabel.everyRule"),
 });
+
+function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
+  const ago = useAgo();
+  const t = useT();
+  const [o, setO] = useState<Overview>();
+  useEffect(() => void call<Overview>("/api/v1/overview").then(setO, () => {}), [call, summary]);
+  const s = summary;
+  const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  const evidence = o
+    ? [
+        { id: "signed", label: t("overviewPage.signed"), value: o.evidence.signed },
+        { id: "sbom", label: t("overviewPage.withSbom"), value: o.evidence.sbom },
+        { id: "provenance", label: t("overviewPage.withProvenance"), value: o.evidence.provenance },
+      ]
+    : [];
+  const recentColumns: Column<Overview["recent"][number]>[] = [
+    {
+      id: "image",
+      header: t("imagesPage.images"),
+      cell: (i) => (
+        <span className="flex min-w-0 flex-col">
+          <a href={`/images/${i.id}`} className="truncate font-mono text-xs font-medium">
+            {i.name}
+          </a>
+          <span className="truncate font-mono text-2xs text-fg-muted">{i.digest.slice(0, 19)}</span>
+        </span>
+      ),
+    },
+    {
+      id: "verdict",
+      header: t("imagesPage.state"),
+      width: "220px",
+      cell: (i) =>
+        i.allowed ? (
+          <StatusBadge tone="success">{t("imagesPage.allowed")}</StatusBadge>
+        ) : (
+          <span className="flex flex-wrap gap-1">
+            <StatusBadge tone="danger">{t("imagesPage.denied")}</StatusBadge>
+            {i.rules.map((r) => (
+              <Badge key={r}>{RULE_LABEL(t)[r] ?? r}</Badge>
+            ))}
+          </span>
+        ),
+    },
+    { id: "updated", header: t("imagesPage.updated"), width: "110px", cell: (i) => <span className="text-xs">{ago(i.updatedAt)}</span> },
+  ];
+  return (
+    <>
+      <PageHeader
+        title={t("overviewPage.overview")}
+        description={
+          s ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: s.images }), value: s.packages.toLocaleString() }) : undefined
+        }
+      />
+      {s && (
+        <KpiGrid minWidth={150}>
+          <KpiCard label={t("imagesPage.allowed")} value={s.allowed} icon={CircleCheck} tone="success" trend={o?.weeks.map((w) => w.images)} href="/images" />
+          <KpiCard label={t("imagesPage.denied")} value={s.denied} icon={Ban} tone={s.denied ? "danger" : "success"} href="/images" />
+          <KpiCard
+            label={t("imagesPage.allowedByException")}
+            value={s.allowedByException}
+            icon={ShieldOff}
+            tone={s.allowedByException ? "warning" : "success"}
+            href="/exceptions"
+          />
+          <KpiCard label={t("imagesPage.withoutSbom")} value={s.withoutSbom} icon={FileX} tone={s.withoutSbom ? "warning" : "success"} />
+          <KpiCard label={t("overviewPage.packages")} value={s.packages.toLocaleString()} icon={PackageIcon} href="/packages" />
+        </KpiGrid>
+      )}
+      {s && o && (
+        <OverviewGrid>
+          <Panel title={t("overviewPage.newImages")} description={t("overviewPage.newImagesDetail")}>
+            <StackedBarChart
+              label={t("overviewPage.newImages")}
+              categories={o.weeks.map((w) => day(w.week))}
+              segments={[{ id: "images", name: t("imagesPage.images") }]}
+              values={o.weeks.map((w) => [w.images])}
+              height={180}
+              xTicks={6}
+            />
+          </Panel>
+          <Panel title={t("overviewPage.verdicts")} description={t("imagesPage.judgedByThePolicyOf")}>
+            <DonutChart
+              label={t("overviewPage.verdicts")}
+              caption={t("overviewPage.imagesCaption")}
+              slices={[
+                { id: "allowed", name: t("imagesPage.allowed"), value: s.allowed - s.allowedByException, color: TONE_COLORS.success, href: "/images" },
+                { id: "waived", name: t("imagesPage.allowedByException"), value: s.allowedByException, color: TONE_COLORS.warning, href: "/exceptions" },
+                { id: "denied", name: t("imagesPage.denied"), value: s.denied, color: TONE_COLORS.danger, href: "/images" },
+              ]}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+      {o && o.evidence.images > 0 && (
+        <Panel title={t("overviewPage.evidence")} description={t("overviewPage.evidenceDetail")}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {evidence.map((e) => (
+              <Gauge
+                key={e.id}
+                label={e.label}
+                value={e.value}
+                max={o.evidence.images}
+                size={160}
+                tone={e.value === o.evidence.images ? "success" : e.value ? "warning" : "neutral"}
+                caption={`${e.label}: ${t("overviewPage.ofImages", { n: e.value, total: o.evidence.images })}`}
+              />
+            ))}
+          </div>
+        </Panel>
+      )}
+      {s && s.images > 0 && (
+        <OverviewGrid layout="halves">
+          <Panel title={t("imagesPage.whyImagesAreDenied")} description={t("imagesPage.imagesEachRuleDenies")}>
+            {s.denied ? (
+              <BarList
+                label={t("imagesPage.whyImagesAreDenied")}
+                items={(Object.entries(s.deniedBy) as Array<[Rule, number]>)
+                  .filter(([, n]) => n > 0)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([rule, n]) => ({ id: rule, label: RULE_LABEL(t)[rule], value: n, color: TONE_COLORS.danger }))}
+              />
+            ) : (
+              <p className="m-0 text-sm text-fg-muted">{t("imagesPage.noImageIsDenied")}</p>
+            )}
+          </Panel>
+          <Panel title={t("imagesPage.licences")} description={t("imagesPage.theLicencesMostPackagesCarry")}>
+            <BarList
+              label={t("imagesPage.licences")}
+              items={s.licences.map((l) => ({
+                id: l.licence,
+                label: l.licence,
+                value: l.packages,
+                color: l.verdict === "denied" ? TONE_COLORS.danger : l.verdict === "unknown" ? TONE_COLORS.warning : undefined,
+              }))}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+      {o && o.recent.length > 0 && (
+        <OverviewGrid>
+          <Panel title={t("overviewPage.recent")} description={t("overviewPage.recentDetail")} flush>
+            <DataTable label={t("overviewPage.recent")} rows={o.recent} columns={recentColumns} getRowId={(i) => i.id} />
+          </Panel>
+          <Panel title={t("overviewPage.topPackages")} description={t("overviewPage.topPackagesDetail")}>
+            <BarList
+              label={t("overviewPage.topPackages")}
+              items={o.topPackages.map((p) => ({ id: p.name, label: p.name, value: p.images, href: `/packages?q=${encodeURIComponent(p.name)}` }))}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+    </>
+  );
+}
 
 function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
   const ago = useAgo();
@@ -195,42 +373,6 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
         }
         actions={<SearchInput label={t("imagesPage.searchNameOrDigest")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />}
       />
-      {summary && (
-        <KpiGrid minWidth={150}>
-          <KpiCard label={t("imagesPage.allowed")} value={summary.allowed} tone="success" />
-          <KpiCard label={t("imagesPage.denied")} value={summary.denied} tone={summary.denied ? "danger" : "success"} />
-          <KpiCard label={t("imagesPage.allowedByException")} value={summary.allowedByException} tone={summary.allowedByException ? "warning" : "success"} />
-          <KpiCard label={t("imagesPage.withoutSbom")} value={summary.withoutSbom} tone={summary.withoutSbom ? "warning" : "success"} />
-        </KpiGrid>
-      )}
-      {summary && summary.images > 0 && (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Panel title={t("imagesPage.whyImagesAreDenied")} description={t("imagesPage.imagesEachRuleDenies")}>
-            {summary.denied ? (
-              <BarList
-                label={t("imagesPage.whyImagesAreDenied")}
-                items={(Object.entries(summary.deniedBy) as Array<[Rule, number]>)
-                  .filter(([, n]) => n > 0)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([rule, n]) => ({ id: rule, label: RULE_LABEL(t)[rule], value: n, color: TONE_COLORS.danger }))}
-              />
-            ) : (
-              <p className="m-0 text-sm text-fg-muted">{t("imagesPage.noImageIsDenied")}</p>
-            )}
-          </Panel>
-          <Panel title={t("imagesPage.licences")} description={t("imagesPage.theLicencesMostPackagesCarry")}>
-            <BarList
-              label={t("imagesPage.licences")}
-              items={summary.licences.map((l) => ({
-                id: l.licence,
-                label: l.licence,
-                value: l.packages,
-                color: l.verdict === "denied" ? TONE_COLORS.danger : l.verdict === "unknown" ? TONE_COLORS.warning : undefined,
-              }))}
-            />
-          </Panel>
-        </div>
-      )}
       <FilterBar onClear={() => (setState("all"), setQ(""))}>
         <SegmentedControl
           label={t("imagesPage.state")}
@@ -920,6 +1062,7 @@ function Product() {
   }, [reload]);
 
   const nav = [
+    { id: "overview", label: msg("product.overview"), icon: LayoutDashboard },
     { id: "images", label: msg("product.images"), icon: Images, count: summary?.images },
     { id: "packages", label: msg("product.whereUsed"), icon: PackageSearch },
     { id: "policy", label: msg("product.policy"), icon: ScrollText },
@@ -958,8 +1101,10 @@ function Product() {
       onThemeChange={setTheme}
       onLanguageChange={(code) => setLocale(toLocale(code))}
     >
-      {route.page === "images" && summary && summary.images === 0 ? (
+      {(route.page === "overview" || route.page === "images") && summary && summary.images === 0 ? (
         <WelcomePage />
+      ) : route.page === "overview" ? (
+        <OverviewPage call={call} summary={summary} />
       ) : route.page === "images" ? (
         <ImagesPage call={call} summary={summary} />
       ) : route.page === "image" ? (

@@ -465,6 +465,42 @@ export function createSupply(db: DatabaseSync) {
       if (db.prepare("DELETE FROM exceptions WHERE id = ?").run(id).changes === 0) throw notFound("The exception");
     },
 
+    /**
+     * What the overview draws besides the summary: images first seen in each of the last 12 weeks, how many carry
+     * each kind of evidence, the newest images with their verdict, and the packages most images contain.
+     */
+    overview() {
+      const DAY = 86_400_000;
+      const today = Math.floor(Date.now() / DAY) * DAY;
+      const first = today + DAY - 12 * 7 * DAY;
+      const weeks = Array.from({ length: 12 }, (_, i) => ({ week: new Date(first + i * 7 * DAY).toISOString().slice(0, 10), images: 0 }));
+      for (const r of db.prepare("SELECT created_at FROM images WHERE created_at >= ?").all(new Date(first).toISOString()) as Array<{ created_at: string }>) {
+        const w = weeks[Math.floor((Date.parse(r.created_at) - first) / (7 * DAY))];
+        if (w) w.images++;
+      }
+      const evidence = db
+        .prepare(
+          "SELECT COUNT(*) AS images, COALESCE(SUM(signature_verified = 1), 0) AS signed, COALESCE(SUM(sbom_at IS NOT NULL), 0) AS sbom, COALESCE(SUM(provenance_at IS NOT NULL), 0) AS provenance FROM images",
+        )
+        .get() as { images: number; signed: number; sbom: number; provenance: number };
+      const recent = (db.prepare("SELECT id FROM images ORDER BY updated_at DESC, rowid DESC LIMIT 8").all() as Array<{ id: string }>).map(({ id }) => {
+        const r = rowOf(id);
+        const e = evaluate(r);
+        return {
+          id,
+          name: r.name,
+          digest: r.digest,
+          allowed: e.allowed,
+          rules: [...new Set(e.reasons.filter((x) => !x.waived).map((x) => x.rule))],
+          updatedAt: r.updated_at,
+        };
+      });
+      const topPackages = db
+        .prepare("SELECT name, COUNT(DISTINCT image_id) AS images FROM packages GROUP BY name ORDER BY images DESC, name LIMIT 8")
+        .all() as Array<{ name: string; images: number }>;
+      return { weeks, evidence, recent, topPackages };
+    },
+
     summary() {
       const ids = db.prepare("SELECT id FROM images").all() as Array<{ id: string }>;
       let allowed = 0;

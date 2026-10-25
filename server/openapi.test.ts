@@ -188,6 +188,7 @@ describe("responses match openapi.json", () => {
     await call("GET", "/api/v1/exceptions", admin());
     await call("GET", "/api/v1/exceptions", {});
     await call("GET", "/api/v1/summary", admin());
+    await call("GET", "/api/v1/overview", admin());
     await call("GET", "/api/v1/summary", {});
     await call("DELETE", "/api/v1/exceptions/{id}", admin(), `/api/v1/exceptions/${exception}`);
     await call("DELETE", "/api/v1/exceptions/{id}", admin(), `/api/v1/exceptions/${exception}`);

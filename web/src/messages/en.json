@@ -1,4 +1,22 @@
 {
+  "overviewPage": {
+    "overview": "Overview",
+    "packages": "Packages",
+    "newImages": "New images",
+    "newImagesDetail": "Images first reported on in each of the last 12 weeks.",
+    "verdicts": "Verdicts",
+    "imagesCaption": "images",
+    "evidence": "Evidence",
+    "evidenceDetail": "How many images CI reported each kind of evidence for.",
+    "signed": "Signed",
+    "withSbom": "SBOM",
+    "withProvenance": "Provenance",
+    "ofImages": "{{n}} of {{total}}",
+    "recent": "Reported on last",
+    "recentDetail": "The newest images and what the policy says about them.",
+    "topPackages": "Packages in most images",
+    "topPackagesDetail": "Open one to see every image that contains it."
+  },
   "stateBadge": {
     "denied": "Denied",
     "allowedByException": "Allowed by exception",
@@ -160,6 +178,7 @@
     "signOut": "Sign out"
   },
   "product": {
+    "overview": "Overview",
     "images": "Images",
     "whereUsed": "Where used",
     "policy": "Policy",

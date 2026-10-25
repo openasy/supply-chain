@@ -1,4 +1,22 @@
 {
+  "overviewPage": {
+    "overview": "Übersicht",
+    "packages": "Pakete",
+    "newImages": "Neue Images",
+    "newImagesDetail": "In jeder der letzten 12 Wochen zuerst gemeldete Images.",
+    "verdicts": "Urteile",
+    "imagesCaption": "Images",
+    "evidence": "Nachweise",
+    "evidenceDetail": "Für wie viele Images die CI jede Art von Nachweis gemeldet hat.",
+    "signed": "Signiert",
+    "withSbom": "SBOM",
+    "withProvenance": "Herkunft",
+    "ofImages": "{{n}} von {{total}}",
+    "recent": "Zuletzt gemeldet",
+    "recentDetail": "Die neuesten Images und was die Richtlinie über sie sagt.",
+    "topPackages": "Pakete in den meisten Images",
+    "topPackagesDetail": "Öffnen Sie eines, um alle Images zu sehen, die es enthalten."
+  },
   "stateBadge": {
     "denied": "Abgelehnt",
     "allowedByException": "Per Ausnahme erlaubt",
@@ -160,6 +178,7 @@
     "signOut": "Abmelden"
   },
   "product": {
+    "overview": "Übersicht",
     "images": "Images",
     "whereUsed": "Wo verwendet",
     "policy": "Richtlinie",

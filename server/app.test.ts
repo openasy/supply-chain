@@ -342,3 +342,27 @@ describe("access", () => {
     expect(metrics).toMatch(/openasy_supply_chain_images_denied \d+/);
   });
 });
+
+describe("the overview", () => {
+  let own: Awaited<ReturnType<typeof startApp>>;
+  beforeAll(async () => {
+    own = await startApp({ version: "0.1.0" });
+  });
+  afterAll(() => own.close());
+
+  it("counts images by week and evidence, lists the newest with their verdict, and ranks packages", async () => {
+    await own.send(APP, digest(1), { sbom });
+    await own.send("ghcr.io/acme/web", digest(2), { sbom });
+    const o = await json(await own.admin("/api/v1/overview"));
+    expect(o.weeks).toHaveLength(12);
+    expect(o.weeks.at(-1).images).toBe(2);
+    expect(o.evidence).toEqual({ images: 2, signed: 0, sbom: 2, provenance: 0 });
+    expect(o.recent).toHaveLength(2);
+    expect(o.recent[0]).toMatchObject({ allowed: false, rules: ["signature"] });
+    expect(o.topPackages).toEqual([
+      { name: "bash", images: 2 },
+      { name: "openssl", images: 2 },
+      { name: "zlib", images: 2 },
+    ]);
+  });
+});

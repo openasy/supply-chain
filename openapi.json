@@ -938,6 +938,49 @@
         "x-openasy-role": "viewer"
       }
     },
+    "/api/v1/overview": {
+      "get": {
+        "operationId": "getOverview",
+        "tags": [
+          "Product"
+        ],
+        "summary": "What the overview draws",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Images first seen in each of the last 12 weeks, how many images carry each kind of evidence, the eight images reported on last with the policy's verdict and the rules they break, and the packages most images contain.\n\nNeeds the viewer role.",
+        "responses": {
+          "200": {
+            "description": "What the overview draws.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
     "/api/v1/version": {
       "get": {
         "operationId": "getVersion",
@@ -2016,6 +2059,125 @@
                 }
               }
             }
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "required": [
+          "weeks",
+          "evidence",
+          "recent",
+          "topPackages"
+        ],
+        "properties": {
+          "weeks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "week",
+                "images"
+              ],
+              "properties": {
+                "week": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "images": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "description": "Oldest first."
+          },
+          "evidence": {
+            "type": "object",
+            "required": [
+              "images",
+              "signed",
+              "sbom",
+              "provenance"
+            ],
+            "properties": {
+              "images": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "signed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sbom": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "provenance": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "description": "Signed counts signatures that verified."
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "digest",
+                "allowed",
+                "rules",
+                "updatedAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "allowed": {
+                  "type": "boolean"
+                },
+                "rules": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Rules broken and not waived."
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "topPackages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "images"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "description": "Eight at most."
           }
         }
       }

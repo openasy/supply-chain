@@ -103,3 +103,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
+
+/** What the overview draws besides the summary (GET /api/v1/overview). */
+export interface Overview {
+  /** Images first seen in each of the last 12 weeks, oldest first. */
+  weeks: Array<{ week: string; images: number }>;
+  /** Images carrying each kind of evidence; signed counts signatures that verified. */
+  evidence: { images: number; signed: number; sbom: number; provenance: number };
+  recent: Array<{ id: string; name: string; digest: string; allowed: boolean; rules: string[]; updatedAt: string }>;
+  topPackages: Array<{ name: string; images: number }>;
+}
