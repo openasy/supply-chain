@@ -70,7 +70,7 @@ import {
   type Usage,
   type Overview,
 } from "./api.ts";
-import { useT, type T } from "./i18n.ts";
+import { useT, type T, viewerLocale, setViewerLocale } from "./i18n.ts";
 import { search } from "./search.ts";
 
 const PAGES = ["packages", "policy", "exceptions", "setup", "account", "members", "signin", "tokens", "about"] as const;
@@ -134,7 +134,7 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
   const [o, setO] = useState<Overview>();
   useEffect(() => void call<Overview>("/api/v1/overview").then(setO, () => {}), [call, summary]);
   const s = summary;
-  const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(viewerLocale(), { month: "short", day: "numeric", timeZone: "UTC" });
   const evidence = o
     ? [
         { id: "signed", label: t("overviewPage.signed"), value: o.evidence.signed },
@@ -178,7 +178,9 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
       <PageHeader
         title={t("overviewPage.overview")}
         description={
-          s ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: s.images }), value: s.packages.toLocaleString() }) : undefined
+          s
+            ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: s.images }), value: s.packages.toLocaleString(viewerLocale()) })
+            : undefined
         }
       />
       {s && (
@@ -193,7 +195,7 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
             href="/exceptions"
           />
           <KpiCard label={t("imagesPage.withoutSbom")} value={s.withoutSbom} icon={FileX} tone={s.withoutSbom ? "warning" : "success"} />
-          <KpiCard label={t("overviewPage.packages")} value={s.packages.toLocaleString()} icon={PackageIcon} href="/packages" />
+          <KpiCard label={t("overviewPage.packages")} value={s.packages.toLocaleString(viewerLocale())} icon={PackageIcon} href="/packages" />
         </KpiGrid>
       )}
       {s && o && (
@@ -368,7 +370,10 @@ function ImagesPage({ call, summary }: { call: Call; summary?: Summary }) {
         title={t("imagesPage.images")}
         description={
           summary
-            ? t("imagesPage.packagesInTheirSboms", { plural: t("plurals.image", { count: summary.images }), value: summary.packages.toLocaleString() })
+            ? t("imagesPage.packagesInTheirSboms", {
+                plural: t("plurals.image", { count: summary.images }),
+                value: summary.packages.toLocaleString(viewerLocale()),
+              })
             : undefined
         }
         actions={<SearchInput label={t("imagesPage.searchNameOrDigest")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />}
@@ -899,7 +904,7 @@ function ExceptionsPage({ call, reload }: { call: Call; reload: () => void }) {
       id: "expires",
       header: t("exceptionsPage.ends"),
       sortValue: (e) => e.expiresAt,
-      cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.expiresAt).toLocaleDateString()}</span>,
+      cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.expiresAt).toLocaleDateString(viewerLocale())}</span>,
     },
     {
       id: "state",
@@ -1128,6 +1133,7 @@ export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
   const [locale] = useLocalePreference();
+  setViewerLocale(locale);
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
     <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
